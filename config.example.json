@@ -1,0 +1,8 @@
+{
+  "workspace": ".",
+  "agents": [
+    { "id": "codex", "name": "Codex", "command": "codex", "args": ["exec", "--json", "-"], "input": "stdin" },
+    { "id": "claude", "name": "Claude Code", "command": "claude", "args": ["-p", "--output-format", "stream-json", "--verbose"], "input": "stdin" },
+    { "id": "kiro", "name": "Kiro CLI", "command": "kiro-cli", "args": ["chat", "--no-interactive", "--output-format", "stream-json"], "input": "stdin" }
+  ]
+}
