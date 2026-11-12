@@ -2,7 +2,7 @@
 
 [Try the interactive demo](https://weisser-dev.github.io/openglassui/) · [Installation](#local-setup) · [Architecture](docs/ARCHITECTURE.md)
 
-The public demo uses fictional data and runs entirely in the browser; it does not connect to agents or control a local machine.
+The public demo uses fictional data and runs entirely in the browser; it does not connect to agents or control a local machine. It is not the installable glasses app: generate the app's QR code in your local companion setup instead.
 
 A local control center for coding agents, with an experimental web interface for Meta Ray-Ban Display glasses. OpenGlassUI runs a companion service on your computer: configure your workspace and agents there, then use the desktop dashboard or a paired glasses web app to follow tasks and respond to supported questions.
 
@@ -103,7 +103,7 @@ Both the admin service and gateway bind to `127.0.0.1`, not the local network. T
 
    Copy the HTTPS URL printed by cloudflared. If you changed `OPENGLASS_GATEWAY_PORT`, use that port in the command. Never forward the admin port. Cloudflare describes Quick Tunnels as a development feature; the address changes when the tunnel is restarted. See the [Quick Tunnel documentation](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
 
-   For private access, select **Tailscale Serve** instead. Install and sign in to Tailscale on the companion and iPhone, enable HTTPS in the tailnet, and allow access under your tailnet policy. The dashboard starts foreground `tailscale serve` for the gateway; stopping it ends that foreground service. A conflicting existing Serve configuration may need separate attention. The glasses' ability to reach a private tailnet address through the iPhone has not been verified; connecting from the iPhone alone does not prove glasses connectivity. See [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
+   For private access, select **Tailscale Serve** instead. Install and sign in to Tailscale on the companion and iPhone, enable HTTPS in the tailnet, and allow access under your tailnet policy. Tailscale is required only for this option, not when using Cloudflare or ngrok. The dashboard starts foreground `tailscale serve` for the gateway; stopping it ends that foreground service. A conflicting existing Serve configuration may need separate attention. The glasses' ability to reach a private tailnet address through the iPhone has not been verified; connecting from the iPhone alone does not prove glasses connectivity. If the glasses report that the app cannot load, try the generated app URL on the iPhone first; an iPhone-only success still does not establish glasses access. For an initial device test, a publicly reachable HTTPS tunnel follows Meta's documented web-app deployment path. See [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
 4. In the desktop dashboard, paste that address into **ÖFFENTLICHE HTTPS-ADRESSE** and choose **Kopplungscode erzeugen**.
 5. Scan the QR code with the iPhone, follow the Meta AI app's add-web-app flow, and open OpenGlassUI on the glasses **within five minutes**. The pairing code can be redeemed once. This deep-link flow is implemented but has not been verified on the actual device.
 6. Keep the companion and tunnel running while using the app. An Internet connection is needed for the tunnel; the glasses and computer do not need to be on the same LAN when the HTTPS endpoint is reachable.

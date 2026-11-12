@@ -26,7 +26,7 @@ await mkdir(dataDir, { recursive:true, mode:0o700 });
 const storePath = path.join(dataDir, 'tasks.json');
 const projectsPath = path.join(dataDir, 'projects.json');
 const setupPath = path.join(dataDir, 'setup.json');
-let setupState={agent:'codex',agents:['codex'],projectId:'default',provider:'tailscale',complete:false};
+let setupState={agent:'codex',agents:['codex'],projectId:'default',provider:'cloudflare',complete:false};
 try{const saved=JSON.parse(await readFile(setupPath,'utf8'));setupState={...setupState,...saved};}catch(error){if(error.code!=='ENOENT')throw error;}
 let setupQueue=Promise.resolve();
 function saveSetup(){const snapshot=JSON.stringify(setupState);setupQueue=setupQueue.catch(()=>{}).then(async()=>{const temp=`${setupPath}.tmp`;await writeFile(temp,snapshot,{mode:0o600});await rename(temp,setupPath);});return setupQueue;}
@@ -195,7 +195,7 @@ const handler = async (req, res) => {
         const code=randomBytes(24).toString('base64url'); pairings.clear(); pairings.set(code,Date.now()+5*60*1000);
         const link=new URL('/glass.html',base); link.hash=`pair=${code}`;
         const deepLink=`fb-viewapp://web_app_deep_link?appName=${encodeURIComponent('OpenGlassUI')}&appUrl=${encodeURIComponent(link.href)}`;
-        return json(res,200,{url:link.href,deepLink,qr:await QRCode.toDataURL(deepLink),expiresIn:300});
+        return json(res,200,{url:link.href,deepLink,qr:await QRCode.toDataURL(deepLink,{errorCorrectionLevel:'H',margin:4,width:512}),expiresIn:300});
       }
       if (url.pathname === '/api/revoke') { if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'}); devices.clear(); pairings.clear(); await saveDevices(); changed(); return json(res,200,{ok:true}); }
       if (url.pathname === '/api/sessions/open') {
