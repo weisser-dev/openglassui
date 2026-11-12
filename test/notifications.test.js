@@ -23,3 +23,18 @@ test('wearable notice prioritizes outstanding decisions over unrelated completio
  const notice=JSON.parse(JSON.stringify(context.wearableNotice(previous,tasks)));assert.equal(notice.taskId,'a');assert.equal(notice.decision,true);assert.match(notice.text,/Decision required/);
  tasks.push({id:'c',agentName:'Codex',status:'running',pendingDecision:{id:'e'}});assert.match(context.wearableNotice(previous,tasks).text,/2 pending/);
 });
+
+test('wearable notices identify tasks and stay dismissed after opening',()=>{
+ const manager=context.createWearableNotices();
+ const tasks=[{id:'a',agentName:'Codex',projectName:'Example',prompt:'Check the tests',status:'completed'}];
+ manager.update(new Map([['a',{status:'running'}]]),tasks);
+ let notice=manager.current(tasks);assert.match(notice.text,/Codex · Example · Task completed/);assert.match(notice.text,/Check the tests/);
+ manager.dismiss(notice);manager.update(new Map([['a',{status:'completed'}]]),tasks);assert.equal(manager.current(tasks),null);
+ tasks[0].pendingDecision={id:'d1'};manager.update(null,tasks);notice=manager.current(tasks);assert.equal(notice.decision,true);manager.dismiss(notice);manager.update(null,tasks);assert.equal(manager.current(tasks),null);
+ tasks[0].pendingDecision={id:'d2'};manager.update(null,tasks);assert.equal(manager.current(tasks).decisionId,'d2');
+});
+test('opening one notification leaves another completion available',()=>{
+ const manager=context.createWearableNotices();const tasks=['a','b'].map(id=>({id,agentName:'Agent',prompt:id,status:'completed'}));
+ manager.update(new Map(tasks.map(task=>[task.id,{status:'running'}])),tasks);
+ const first=manager.current(tasks);manager.dismiss(first);assert.notEqual(manager.current(tasks).taskId,first.taskId);
+});
