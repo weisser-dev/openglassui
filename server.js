@@ -51,7 +51,8 @@ function json(res, status, data) { res.writeHead(status, { 'Content-Type':'appli
 function exposed(task) { const { process, ...data } = task; return data; }
 let saveQueue = Promise.resolve();
 function save() { changed(); const snapshot = JSON.stringify([...tasks.values()].map(exposed)); saveQueue = saveQueue.then(async () => { const temp = `${storePath}.tmp`; await writeFile(temp, snapshot, { mode:0o600 }); await rename(temp, storePath); }).catch(e => console.error('Speichern fehlgeschlagen:', e.message)); }
-async function body(req) { let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16384) throw new Error('Eingabe zu lang'); } return JSON.parse(raw || '{}'); }
+function assertCurrentAccess(req){if(!local(req) && !authorized(req)){const error=new Error('Zugriff widerrufen.');error.status=401;throw error;}}
+async function body(req) { let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16384) throw new Error('Eingabe zu lang'); } if(new URL(req.url,'http://localhost').pathname!=='/api/pair')assertCurrentAccess(req);return JSON.parse(raw || '{}'); }
 function local(req) { return req.socket.localPort===port && [`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host) && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.forwarded; }
 function localOrigin(req) { return req.headers.origin === `http://127.0.0.1:${port}` || req.headers.origin === `http://localhost:${port}`; }
 function deviceForToken(token) {if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))return null;const hash=hashToken(token);return [...devices.values()].find(device=>device.tokenHash===hash) || null;}
@@ -132,9 +133,9 @@ const handler = async (req, res) => {
     }
     if (url.pathname.startsWith('/api/')) {
       if (!isLocal && !authorized(req)) return json(res,401,{error:'Bitte zuerst koppeln.'});
-      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); return json(res,200,{sessions:await (agent==='kiro'?listKiroSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command))}); }
+      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); const sessions=await (agent==='kiro'?listKiroSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{sessions}); }
       const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude|kiro)\/([a-z0-9_-]+)$/i);
-      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
+      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
@@ -175,7 +176,7 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/revoke') { if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'}); devices.clear(); pairings.clear(); await saveDevices(); changed(); return json(res,200,{ok:true}); }
       if (url.pathname === '/api/sessions/open') {
         const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || !['codex','claude','kiro'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const project=projectById(input.projectId || 'default'); const data=await (input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));
+        const project=projectById(input.projectId || 'default'); const data=await (input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);
         const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:formatSession(data,input.agent),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
         tasks.set(task.id,task);save();return json(res,201,exposed(task));
       }
@@ -213,7 +214,7 @@ const handler = async (req, res) => {
     if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
-  } catch (error) { json(res,400,{error:error.message}); }
+  } catch (error) { json(res,error.status || 400,{error:error.message}); }
 };
 const server=http.createServer(handler), gateway=http.createServer(handler);
 const eventServer=new WebSocketServer({noServer:true,maxPayload:4096});

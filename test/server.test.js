@@ -8,6 +8,7 @@ import WebSocket from 'ws';
 import {createECDH,randomBytes} from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { once } from 'node:events';
+import http from 'node:http';
 
 test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => {
  const dir=await mkdtemp(path.join(os.tmpdir(),'openglass-test-'));
@@ -63,7 +64,9 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   const secondPair=await (await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com'})})).json();const code2=new URLSearchParams(new URL(secondPair.url).hash.slice(1)).get('pair');const token2=(await (await fetch(gateway+'/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code2})})).json()).token;
   assert.equal((await fetch(base+'/api/projects',{method:'POST',headers:{...remoteHeaders,Authorization:`Bearer ${token2}`,'Content-Type':'application/json'},body:JSON.stringify({name:'Bad',path:dir})})).status,403);
   assert.equal((await fetch(base+'/api/pairing',{method:'POST',headers:{...remoteHeaders,Authorization:`Bearer ${token2}`,'Content-Type':'application/json'},body:'{}'})).status,403);
+  let slow;const slowResult=new Promise((resolve,reject)=>{slow=http.request(gateway+'/api/tasks',{method:'POST',headers:{Authorization:`Bearer ${token2}`,'Content-Type':'application/json'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});slow.on('error',reject);slow.write('{"agentId":"mock",');});await delay(50);
   await fetch(base+'/api/revoke',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:'{}'});
+  slow.end('"prompt":"must not run"}');assert.equal(await slowResult,401);assert.equal((await (await fetch(base+'/api/state')).json()).tasks.some(t=>t.prompt==='must not run'),false);
   assert.equal((await fetch(base+'/api/state',{headers:{...remoteHeaders,Authorization:`Bearer ${token2}`}})).status,401);
  } finally {server.kill(); await rm(dir,{recursive:true,force:true});}
 });
