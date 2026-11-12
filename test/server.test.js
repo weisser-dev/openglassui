@@ -1,22 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import WebSocket from 'ws';
 import { setTimeout as delay } from 'node:timers/promises';
 
 test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => {
  const dir=await mkdtemp(path.join(os.tmpdir(),'openglass-test-'));
  const port=String(20000+Math.floor(Math.random()*20000));
  const base=`http://127.0.0.1:${port}`;
- await writeFile(path.join(dir,'config.json'),JSON.stringify({workspace:dir,agents:[{id:'mock',name:'Test',command:process.execPath,args:['-e',"process.stdin.on('data', x => process.stdout.write('Antwort: '+x))"],input:'stdin'}]}));
+ await mkdir(path.join(dir,'second'));
+ await writeFile(path.join(dir,'config.json'),JSON.stringify({workspace:dir,agents:[{id:'mock',name:'Test',command:process.execPath,args:['-e',"process.stdin.on('data', x => process.stdout.write('Antwort: '+x+' cwd:'+process.cwd()))"],input:'stdin'}]}));
  const server=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:port,OPENGLASS_CONFIG:path.join(dir,'config.json'),OPENGLASS_DATA_DIR:path.join(dir,'data')},stdio:'ignore'});
  try {
   let ready=false; for(let i=0;i<50;i++){try{await fetch(base+'/api/state');ready=true;break;}catch{await delay(50);}} assert.ok(ready);
   const bad=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://example.com'},body:JSON.stringify({agentId:'mock',prompt:'Hallo'})}); assert.equal(bad.status,403);
   const response=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',prompt:'Hallo'})}); assert.equal(response.status,201);
   let task; for(let i=0;i<50;i++){task=(await (await fetch(base+'/api/state')).json()).tasks[0];if(task.status!=='running')break;await delay(50);} assert.equal(task.status,'completed'); assert.match(task.output,/Antwort: Hallo/);
+  const added=await fetch(base+'/api/projects',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({name:'Zweites Projekt',path:path.join(dir,'second')})});assert.equal(added.status,201);const project=await added.json();
+  const state=await (await fetch(base+'/api/state')).json(); assert.equal(state.projects.find(p=>p.id===project.id).name,'Zweites Projekt');
+  const secondTask=await (await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',projectId:project.id,prompt:'Zweites Projekt'})})).json();
+  let secondResult;for(let i=0;i<50;i++){secondResult=(await (await fetch(base+'/api/state')).json()).tasks.find(t=>t.id===secondTask.id);if(secondResult?.status!=='running')break;await delay(50);}assert.equal(secondResult.status,'completed');assert.match(secondResult.output,/cwd:.*second/);assert.equal(secondResult.projectId,project.id);
+  const invalid=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',projectId:'unknown',prompt:'Hallo'})});assert.equal(invalid.status,400);
+  const change=await fetch(base+'/api/changes?since=0');assert.equal(change.status,200);assert.ok((await change.json()).revision>0);
+  const gateway=`http://127.0.0.1:${Number(port)+1}`;
+  assert.equal((await fetch(gateway+'/api/state')).status,401);
+  assert.equal((await fetch(gateway+'/api/tunnel')).status,401);
   const remoteHeaders={'X-Forwarded-For':'203.0.113.10'};
   assert.equal((await fetch(base+'/api/state',{headers:remoteHeaders})).status,401);
   const pairResponse=await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com'})});
@@ -25,8 +36,22 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   const exchange=()=>fetch(base+'/api/pair',{method:'POST',headers:{...remoteHeaders,'Content-Type':'application/json'},body:JSON.stringify({code})});
   const exchanged=await exchange();assert.equal(exchanged.status,200);const {token}=await exchanged.json();assert.equal((await exchange()).status,401);
   assert.equal((await fetch(base+'/api/state',{headers:{...remoteHeaders,Authorization:`Bearer ${token}`}})).status,200);
-  assert.equal((await fetch(base+'/api/pairing',{method:'POST',headers:{...remoteHeaders,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:'{}'})).status,403);
+  assert.equal((await fetch(gateway+'/api/state',{headers:{Authorization:`Bearer ${token}`}})).status,200);
+  assert.equal((await fetch(gateway+'/api/projects',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Origin:base},body:JSON.stringify({name:'Bad',path:dir})})).status,403);
+  const socket=new WebSocket(`ws://127.0.0.1:${Number(port)+1}/api/events`);
+  const initialEvent=new Promise((resolve,reject)=>{socket.once('open',()=>socket.send(JSON.stringify({token})));socket.once('message',data=>resolve(JSON.parse(data)));socket.once('error',reject);});
+  assert.ok(Number.isSafeInteger((await initialEvent).revision));
+  const closed=new Promise(resolve=>socket.once('close',code=>resolve(code)));
+  const deviceList=await (await fetch(base+'/api/devices')).json();assert.equal(deviceList.devices.length,1);assert.equal('tokenHash' in deviceList.devices[0],false);
+  const deviceFile=await readFile(path.join(dir,'data','devices.json'),'utf8');assert.equal(deviceFile.includes(token),false);
+  assert.equal((await fetch(gateway+'/api/devices',{headers:{Authorization:`Bearer ${token}`}})).status,403);
+  await fetch(base+`/api/devices/${deviceList.devices[0].id}/revoke`,{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:'{}'});
+  assert.equal(await closed,1008);
+  assert.equal((await fetch(gateway+'/api/state',{headers:{Authorization:`Bearer ${token}`}})).status,401);
+  const secondPair=await (await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com'})})).json();const code2=new URLSearchParams(new URL(secondPair.url).hash.slice(1)).get('pair');const token2=(await (await fetch(gateway+'/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code2})})).json()).token;
+  assert.equal((await fetch(base+'/api/projects',{method:'POST',headers:{...remoteHeaders,Authorization:`Bearer ${token2}`,'Content-Type':'application/json'},body:JSON.stringify({name:'Bad',path:dir})})).status,403);
+  assert.equal((await fetch(base+'/api/pairing',{method:'POST',headers:{...remoteHeaders,Authorization:`Bearer ${token2}`,'Content-Type':'application/json'},body:'{}'})).status,403);
   await fetch(base+'/api/revoke',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:'{}'});
-  assert.equal((await fetch(base+'/api/state',{headers:{...remoteHeaders,Authorization:`Bearer ${token}`}})).status,401);
+  assert.equal((await fetch(base+'/api/state',{headers:{...remoteHeaders,Authorization:`Bearer ${token2}`}})).status,401);
  } finally {server.kill(); await rm(dir,{recursive:true,force:true});}
 });

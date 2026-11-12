@@ -39,7 +39,7 @@ export function runClaude({prompt,workspace,sessionId,onMessage,onDecision,onDon
  return {kill(){abort.abort();process.close();}};
 }
 
-export function runCodex({prompt,workspace,sessionId,command='codex',onSession,onText,onDecision,onDone}) {
+export function runCodex({prompt,workspace,sessionId,command='codex',onSession,onText,onUsage=()=>{},onDecision,onDone}) {
  const child=spawn(command,['app-server','--enable','default_mode_request_user_input'],{stdio:['pipe','pipe','pipe']});
  const lines=createInterface({input:child.stdout});let seq=0,finished=false,threadId,turnId,stderr='';const pending=new Map();
  function finish(err){if(finished)return;finished=true;for(const p of pending.values())p.reject(err||new Error('Sitzung beendet.'));pending.clear();child.kill();onDone(err);}
@@ -55,6 +55,7 @@ export function runCodex({prompt,workspace,sessionId,command='codex',onSession,o
    const decision={id:String(msg.id),kind:question?'question':'approval',toolName:msg.method,description:msg.params.reason||'',input:question?{questions:msg.params.questions}:msg.params};
    try{const answer=await onDecision(decision);if(question){const answers={};for(const q of msg.params.questions||[])answers[q.id]={answers:answer?.type==='answer'?[answer.answers[q.question]]:[]};send({id:msg.id,result:{answers}});}else send({id:msg.id,result:{decision:answer?.type==='allow'?'accept':'decline'}});}catch{send({id:msg.id,error:{code:-32603,message:'Entscheidung abgebrochen'}});}return;
   }
+  if(msg.method==='thread/tokenUsage/updated')onUsage({provider:'codex',tokenUsage:msg.params.tokenUsage});
   if(msg.method==='item/agentMessage/delta')onText(msg.params.delta||'');
   if(msg.method==='item/commandExecution/outputDelta')onText(msg.params.delta||'');
   if(msg.method==='turn/completed'&&msg.params.threadId===threadId){const turn=msg.params.turn;finish(turn.status==='completed'?null:new Error(turn.error?.message||`Codex: ${turn.status}`));}

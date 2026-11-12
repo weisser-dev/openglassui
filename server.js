@@ -1,11 +1,14 @@
 import http from 'node:http';
 import { readFile, realpath, mkdir, writeFile, rename } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
+import { WebSocketServer, WebSocket } from 'ws';
 import { listAgentSessions, readAgentSession, runClaude, runCodex } from './sessions.js';
+import { runKiro, listKiroSessions, readKiroSession } from './kiro.js';
+import { createTunnelManager } from './tunnel.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.resolve(process.env.OPENGLASS_CONFIG || path.join(root, 'config.json'));
@@ -17,44 +20,70 @@ const agents = config.agents || [];
 const dataDir = path.resolve(process.env.OPENGLASS_DATA_DIR || path.join(root, '.openglass'));
 await mkdir(dataDir, { recursive:true, mode:0o700 });
 const storePath = path.join(dataDir, 'tasks.json');
+const projectsPath = path.join(dataDir, 'projects.json');
+let savedProjects = [];
+try { savedProjects = JSON.parse(await readFile(projectsPath, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+const projects = new Map([['default', {id:'default', name:path.basename(workspace) || workspace, path:workspace}], ...savedProjects.map(p => [p.id,p])]);
+function projectById(id = 'default') { const project=projects.get(id); if(!project) throw new Error('Projekt nicht gefunden.'); return project; }
+async function saveProjects() { const temporary=`${projectsPath}.tmp`; await writeFile(temporary,JSON.stringify([...projects.values()].filter(p=>p.id!=='default')), {mode:0o600}); await rename(temporary,projectsPath); }
+
 let stored = [];
 try { stored = JSON.parse(await readFile(storePath, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
 const tasks = new Map(stored.map(t => { const {pendingDecision,...rest}=t; return [t.id, {...rest, status: t.status === 'running' ? 'interrupted' : t.status}]; }));
-const pairings = new Map(), tokens = new Set(), decisions = new Map();
-const port = Number(process.env.PORT || 4173), host = '127.0.0.1';
+const devicesPath=path.join(dataDir,'devices.json');
+let savedDevices=[];try{savedDevices=JSON.parse(await readFile(devicesPath,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+const devices=new Map(savedDevices.map(device=>[device.id,device]));
+const hashToken=token=>createHash('sha256').update(token).digest('hex');
+let devicesQueue=Promise.resolve();
+function saveDevices(){const snapshot=JSON.stringify([...devices.values()]);devicesQueue=devicesQueue.catch(()=>{}).then(async()=>{const tmp=`${devicesPath}.tmp`;await writeFile(tmp,snapshot,{mode:0o600});await rename(tmp,devicesPath);});return devicesQueue;}
+const pairings = new Map(), decisions = new Map();
+let revision=0; const watchers=new Set(), sockets=new Set();
+function changed(){revision++;for(const notify of [...watchers])notify();for(const socket of [...sockets]){if(!socket.isLocal && !authorizedToken(socket.token)) {socket.close(1008,'Zugriff widerrufen');sockets.delete(socket);continue;}if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify({revision}));}}
+const port = Number(process.env.PORT || 4173), gatewayPort=Number(process.env.OPENGLASS_GATEWAY_PORT || port+1), host = '127.0.0.1';
+if(!Number.isInteger(port) || !Number.isInteger(gatewayPort) || port<1 || gatewayPort<1 || port>65535 || gatewayPort>65535 || port===gatewayPort) throw new Error('Ungültiger lokaler oder Gateway-Port.');
+const tunnel=createTunnelManager({port:gatewayPort});
 const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8' };
 function json(res, status, data) { res.writeHead(status, { 'Content-Type':'application/json', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer' }); res.end(JSON.stringify(data)); }
 function exposed(task) { const { process, ...data } = task; return data; }
 let saveQueue = Promise.resolve();
-function save() { const snapshot = JSON.stringify([...tasks.values()].map(exposed)); saveQueue = saveQueue.then(async () => { const temp = `${storePath}.tmp`; await writeFile(temp, snapshot, { mode:0o600 }); await rename(temp, storePath); }).catch(e => console.error('Speichern fehlgeschlagen:', e.message)); }
+function save() { changed(); const snapshot = JSON.stringify([...tasks.values()].map(exposed)); saveQueue = saveQueue.then(async () => { const temp = `${storePath}.tmp`; await writeFile(temp, snapshot, { mode:0o600 }); await rename(temp, storePath); }).catch(e => console.error('Speichern fehlgeschlagen:', e.message)); }
 async function body(req) { let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16384) throw new Error('Eingabe zu lang'); } return JSON.parse(raw || '{}'); }
-function local(req) { return [`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host) && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.forwarded; }
+function local(req) { return req.socket.localPort===port && [`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host) && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.forwarded; }
 function localOrigin(req) { return req.headers.origin === `http://127.0.0.1:${port}` || req.headers.origin === `http://localhost:${port}`; }
-function authorized(req) { const token = (req.headers.authorization || '').replace(/^Bearer /, ''); return tokens.has(token); }
+function authorizedToken(token) {if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))return false;const hash=hashToken(token);return [...devices.values()].some(device=>device.tokenHash===hash);}
+function authorized(req) { const header=req.headers.authorization || '';return header.startsWith('Bearer ') && authorizedToken(header.slice(7)); }
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
-function run(agent, prompt, oldTask) {
-  const args = oldTask ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
+function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) {
+  const workspace = project.path;
+  const args = oldTask && agent.id !== 'kiro' ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
   if (!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string') throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
-  const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null };
+  const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
   task.status = 'running'; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
   tasks.set(task.id, task); save();
+  if (agent.id === 'kiro') {
+    const handle=runKiro({command:agent.command,args:agent.acpArgs || ['acp','--agent-engine','v3'],workspace,prompt,sessionId:oldTask?.sessionId,
+      onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
+      onDecision(decision){if(decisions.has(task.id))return Promise.resolve(null);return new Promise(resolve=>{task.pendingDecision=decision;save();decisions.set(task.id,answer=>{decisions.delete(task.id);delete task.pendingDecision;save();resolve(answer);});});},
+      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;delete task.pendingDecision;decisions.delete(task.id);save();}});
+    task.process=handle;return task;
+  }
   if (agent.id === 'codex') {
     const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,
-      onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);},
+      onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onUsage(usage){task.usage=usage;save();},
       onDecision(decision){if(decisions.has(task.id))return Promise.resolve({type:'deny'});return new Promise(resolve=>{task.pendingDecision=decision;save();decisions.set(task.id,answer=>{decisions.delete(task.id);delete task.pendingDecision;save();resolve(answer);});});},
       onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;delete task.pendingDecision;decisions.delete(task.id);save();}});
     task.process=handle;return task;
   }
   if (agent.id === 'claude') {
     const handle = runClaude({prompt, workspace, sessionId:oldTask?.sessionId,
-      onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text)task.output=(task.output+text+'\n').slice(-100000); } if(message.type==='result' && message.is_error) task.status='failed'; },
+      onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text)task.output=(task.output+text+'\n').slice(-100000); } if(message.type==='result') { if(message.usage || message.total_cost_usd!==undefined) task.usage={provider:'claude',usage:message.usage,costUsd:message.total_cost_usd}; if(message.is_error) task.status='failed'; } changed(); },
       onDecision(decision,signal) { if(decisions.has(task.id))return Promise.resolve({type:'deny'}); return new Promise(resolve=>{ task.pendingDecision=decision; save(); const done=answer=>{decisions.delete(task.id);delete task.pendingDecision;save();resolve(answer);}; decisions.set(task.id,done); signal?.addEventListener('abort',()=>done({type:'deny'}),{once:true}); }); },
       onDone(error) { if(error) {task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; delete task.pendingDecision; decisions.delete(task.id); save(); }
     }); task.process=handle; return task;
   }
   const child = spawn(agent.command, args, { cwd:workspace, shell:false, stdio:['pipe','pipe','pipe'] }); task.process = child;
   let pending = '';
-  const append = chunk => { task.output = (task.output + chunk.toString()).slice(-100000); };
+  const append = chunk => { task.output = (task.output + chunk.toString()).slice(-100000); changed(); };
   child.stdout.on('data', chunk => { const str = chunk.toString(); append(str); pending += str; const lines = pending.split('\n'); pending = lines.pop(); for (const line of lines) { try { const event = JSON.parse(line); if (agent.id === 'codex' && event.type === 'thread.started' && /^[0-9a-f-]{36}$/i.test(event.thread_id || '')) task.sessionId = event.thread_id; if (agent.id === 'claude' && /^[0-9a-f-]{36}$/i.test(event.session_id || '')) task.sessionId = event.session_id; } catch {} } });
   child.stderr.on('data', append); child.stdin.on('error', () => {});
   child.on('error', err => { append(`\n${err.message}`); task.status = 'failed'; save(); });
@@ -62,7 +91,7 @@ function run(agent, prompt, oldTask) {
   child.stdin.end(prompt.trim() + '\n');
   return task;
 }
-const server = http.createServer(async (req, res) => {
+const handler = async (req, res) => {
   try {
     const url = new URL(req.url, `http://${host}:${port}`);
     const isLocal = local(req);
@@ -70,15 +99,36 @@ const server = http.createServer(async (req, res) => {
       if (req.headers['content-type'] !== 'application/json') return json(res,403,{error:'Zugriff verweigert.'});
       const input = await body(req); const entry = pairings.get(input.code); pairings.delete(input.code);
       if (!entry || entry < Date.now()) return json(res,401,{error:'Kopplungscode ungültig oder abgelaufen.'});
-      const token = randomBytes(32).toString('base64url'); tokens.add(token); return json(res,200,{token});
+      const token = randomBytes(32).toString('base64url');const device={id:randomUUID(),name:'Brille',createdAt:new Date().toISOString(),tokenHash:hashToken(token)};devices.set(device.id,device);try{await saveDevices();}catch(error){devices.delete(device.id);throw error;}return json(res,200,{token});
     }
     if (url.pathname.startsWith('/api/')) {
       if (!isLocal && !authorized(req)) return json(res,401,{error:'Bitte zuerst koppeln.'});
-      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); if(!cfg || !['claude','codex'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); return json(res,200,{sessions:await listAgentSessions(agent,workspace,cfg.command)}); }
-      const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude)\/([0-9a-f-]+)$/i);
-      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); return json(res,200,{session:await readAgentSession(sessionMatch[1],sessionMatch[2],workspace,cfg.command)}); }
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{workspace,agents:agents.map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
+      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); return json(res,200,{sessions:await (agent==='kiro'?listKiroSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command))}); }
+      const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude|kiro)\/([a-z0-9_-]+)$/i);
+      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); return json(res,200,{session:await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command))}); }
+      if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt})=>({id,name,createdAt}))}); }
+      if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
+      if (req.method === 'GET' && url.pathname === '/api/changes') {
+        const since=Number(url.searchParams.get('since')); if(!Number.isSafeInteger(since) || since<0) return json(res,400,{error:'Ungültige Revision.'});
+        if(since!==revision) return json(res,200,{revision});
+        let timer; const finish=()=>{clearTimeout(timer);watchers.delete(finish);if(!res.writableEnded && !res.destroyed)json(res,200,{revision});};
+        watchers.add(finish); timer=setTimeout(finish,25000); res.on('close',()=>{clearTimeout(timer);watchers.delete(finish);}); return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
+      const deviceMatch=url.pathname.match(/^\/api\/devices\/([a-f0-9-]+)\/(revoke|rename)$/);
+      if(deviceMatch){if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const device=devices.get(deviceMatch[1]);if(!device)return json(res,404,{error:'Gerät nicht gefunden.'});if(deviceMatch[2]==='revoke')devices.delete(device.id);else{const input=await body(req);if(typeof input.name!=='string'||!input.name.trim()||input.name.length>80)return json(res,400,{error:'Bitte einen gültigen Namen angeben.'});device.name=input.name.trim();}await saveDevices();changed();return json(res,200,{ok:true});}
+      if (url.pathname === '/api/tunnel/start') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); const input=await body(req);return json(res,200,tunnel.start(input.provider)); }
+      if (url.pathname === '/api/tunnel/stop') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,tunnel.stop()); }
+      const projectMatch=url.pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/(remove|rename)$/);
+      if(projectMatch){if(!isLocal)return json(res,403,{error:'Projekte können nur lokal konfiguriert werden.'});const project=projects.get(projectMatch[1]);if(!project)return json(res,404,{error:'Projekt nicht gefunden.'});if(projectMatch[2]==='remove'){if([...tasks.values()].some(task=>task.projectId===project.id && task.status==='running'))return json(res,409,{error:'Dieses Projekt hat noch laufende Aufgaben.'});projects.delete(project.id);}else{const input=await body(req);if(typeof input.name!=='string'||!input.name.trim()||input.name.length>100)return json(res,400,{error:'Bitte einen gültigen Namen angeben.'});project.name=input.name.trim();}await saveProjects();changed();return json(res,200,{ok:true});}
+      if (url.pathname === '/api/projects') {
+        if (!isLocal) return json(res,403,{error:'Projekte können nur lokal konfiguriert werden.'});
+        const input=await body(req); if(typeof input.path!=='string' || !path.isAbsolute(input.path) || typeof input.name!=='string' || !input.name.trim() || input.name.length>100) return json(res,400,{error:'Bitte Namen und absoluten Projektpfad angeben.'});
+        const resolved=await realpath(input.path); const info=await import('node:fs/promises').then(fs=>fs.stat(resolved)); if(!info.isDirectory()) return json(res,400,{error:'Projektpfad ist kein Verzeichnis.'});
+        if([...projects.values()].some(p=>p.path===resolved)) return json(res,409,{error:'Dieses Projekt ist bereits eingerichtet.'});
+        const project={id:randomUUID(),name:input.name.trim(),path:resolved}; projects.set(project.id,project); await saveProjects(); changed(); return json(res,201,{id:project.id,name:project.name});
+      }
       if (url.pathname === '/api/pairing') {
         if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'});
         const input=await body(req); let base; try { base=new URL(input.url); } catch { return json(res,400,{error:'Bitte eine öffentliche HTTPS-Adresse angeben.'}); }
@@ -88,22 +138,23 @@ const server = http.createServer(async (req, res) => {
         const deepLink=`fb-viewapp://web_app_deep_link?appName=${encodeURIComponent('OpenGlassUI')}&appUrl=${encodeURIComponent(link.href)}`;
         return json(res,200,{url:link.href,deepLink,qr:await QRCode.toDataURL(deepLink),expiresIn:300});
       }
-      if (url.pathname === '/api/revoke') { if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'}); tokens.clear(); pairings.clear(); return json(res,200,{ok:true}); }
+      if (url.pathname === '/api/revoke') { if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'}); devices.clear(); pairings.clear(); await saveDevices(); changed(); return json(res,200,{ok:true}); }
       if (url.pathname === '/api/sessions/open') {
-        const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || !['codex','claude'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const data=await readAgentSession(input.agent,input.id,workspace,cfg.command);
-        const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:JSON.stringify(data,null,2).slice(-100000),createdAt:new Date().toISOString(),sessionId:input.id};
+        const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || !['codex','claude','kiro'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
+        const project=projectById(input.projectId || 'default'); const data=await (input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));
+        const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:JSON.stringify(data,null,2).slice(-100000),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
         tasks.set(task.id,task);save();return json(res,201,exposed(task));
       }
       if (url.pathname === '/api/tasks') {
         const input=await body(req), agent=agents.find(a=>a.id===input.agentId);
         if (!agent || !publicTaskInput(input)) return json(res,400,{error:'Bitte Agent und gültige Aufgabe auswählen.'});
-        return json(res,201,exposed(run(agent,input.prompt)));
+        const project=projectById(input.projectId || 'default'); return json(res,201,exposed(run(agent,input.prompt,null,project)));
       }
       const decisionMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/decision$/);
       if (decisionMatch) {
         const task=tasks.get(decisionMatch[1]), resolve=decisions.get(decisionMatch[1]); const input=await body(req); const pending=task?.pendingDecision;
         if (!resolve || !pending || input.decisionId!==pending.id) return json(res,409,{error:'Entscheidung nicht mehr offen.'});
+        if (pending.kind==='kiro_permission' && input.type==='choice') { const option=pending.input.options.find(o=>o.optionId===input.optionId); if(!option) return json(res,400,{error:'Ungültige Auswahl.'}); resolve({optionId:option.optionId}); return json(res,200,{ok:true}); }
         if (pending.kind==='approval' && ['allow','deny'].includes(input.type)) {resolve({type:input.type}); return json(res,200,{ok:true});}
         if (pending.kind==='question' && input.type==='answer' && input.answers && typeof input.answers==='object') {
           const questions=pending.input?.questions; if(!Array.isArray(questions) || !questions.every(q=>typeof input.answers[q.question]==='string' && input.answers[q.question].length>0 && input.answers[q.question].length<=2000)) return json(res,400,{error:'Bitte alle Fragen beantworten.'});
@@ -117,16 +168,32 @@ const server = http.createServer(async (req, res) => {
         const task=tasks.get(match[1]); if (!task) return json(res,404,{error:'Aufgabe nicht gefunden.'});
         if (match[2] === 'stop') { if (task.status !== 'running' || !task.process) return json(res,409,{error:'Aufgabe läuft nicht.'}); task.status='stopped'; decisions.get(task.id)?.({type:'deny'}); task.process.kill('SIGTERM'); save(); return json(res,200,exposed(task)); }
         const input=await body(req), agent=agents.find(a=>a.id===task.agentId);
-        if (task.status === 'running' || !task.sessionId || !agent?.resumeArgs || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
+        if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || agent?.id==='kiro') || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
         return json(res,200,exposed(run(agent,input.prompt,task)));
       }
       return json(res,404,{error:'Nicht gefunden.'});
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
-    res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"}); res.end(data);
+    res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,400,{error:error.message}); }
+};
+const server=http.createServer(handler), gateway=http.createServer(handler);
+const eventServer=new WebSocketServer({noServer:true,maxPayload:4096});
+for(const listener of [server,gateway])listener.on('upgrade',(req,socket,head)=>{
+  if(req.url!=='/api/events' || eventServer.clients.size>=100){socket.destroy();return;}
+  eventServer.handleUpgrade(req,socket,head,ws=>{
+    ws.isLocal=local(req) && localOrigin(req);let authenticated=false;const deadline=setTimeout(()=>ws.close(1008,'Authentifizierung erforderlich'),5000);
+    ws.on('error',()=>{});ws.on('close',()=>{clearTimeout(deadline);sockets.delete(ws);});
+    ws.on('message',raw=>{if(authenticated)return;let data;try{data=JSON.parse(raw.toString())}catch{ws.close(1008,'Ungültige Anmeldung');return;}
+      if(!ws.isLocal && !authorizedToken(data.token)){ws.close(1008,'Zugriff verweigert');return;}authenticated=true;ws.token=data.token;clearTimeout(deadline);sockets.add(ws);ws.send(JSON.stringify({revision}));
+    });
+  });
 });
+const heartbeat=setInterval(()=>{for(const ws of sockets)if(ws.readyState===WebSocket.OPEN)ws.ping();},30000);heartbeat.unref();
 server.listen(port,host,()=>console.log(`OpenGlassUI läuft lokal: http://${host}:${port}\nProjekt: ${workspace}`));
+gateway.listen(gatewayPort,host,()=>console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`));
+
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{tunnel.stop();for(const ws of sockets)ws.close();gateway.close();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),1000).unref();});
