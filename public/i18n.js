@@ -2,6 +2,8 @@
 // the interface is still being migrated and must not translate user content.
 (() => {
  const de={
+  'STARTUP':'AUTOSTART', 'Ready when\nyou are.':'Bereit, wenn\ndu es bist.', 'Choose what starts automatically on this computer.':'Wähle, was auf diesem Computer automatisch startet.', 'A public tunnel exposes the gateway whenever it is running.':'Ein öffentlicher Tunnel macht das Gateway erreichbar, solange er läuft.',
+  'Checking login start…':'Anmeldestart wird geprüft…', 'Start OpenGlassUI when I log in (macOS)':'OpenGlassUI bei meiner Anmeldung starten (macOS)', 'Changes take effect at the next login.':'Änderungen gelten ab der nächsten Anmeldung.', 'Automatic login start is currently supported on macOS only.':'Der automatische Anmeldestart wird derzeit nur unter macOS unterstützt.', 'An unmanaged login item already uses this name.':'Ein nicht von OpenGlassUI verwalteter Anmeldeeintrag verwendet diesen Namen bereits.', 'Start the selected connection when OpenGlassUI starts':'Die ausgewählte Verbindung beim Start von OpenGlassUI aufbauen',
   'AGENTS':'AGENTEN','PROJECTS':'PROJEKTE','CONNECTION':'VERBINDUNG','GLASSES':'BRILLE','FINISH':'ABSCHLUSS',
   'Your agents.\nYour setup.':'Deine Agenten.\nDein Setup.','Everything in\none place.':'Alles an einem\nOrt.','Your connection.\nYour choice.':'Deine Verbindung.\nDeine Wahl.','Scan once.\nConnect.':'Einmal scannen.\nVerbunden.','Ready for\nyour workflow.':'Bereit für\ndeinen Workflow.',
   'Choose your coding agent. OpenGlassUI checks whether its executable is available on this computer.':'Wähle deinen Coding-Agenten. OpenGlassUI prüft, ob sein Programm verfügbar ist.',

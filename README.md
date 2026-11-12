@@ -59,6 +59,14 @@ Meta's device capabilities, developer settings, and WebMCP availability may vary
 
 ## Local setup
 
+### npm package (publication pending)
+
+Once `@weisser-dev/openglassui` has been published, install it with `npm install -g @weisser-dev/openglassui` and start it with `openglassui`. The package stores its configuration and local data in `~/.openglassui`; the current directory becomes the initial default project. Use `OPENGLASS_CONFIG` and `OPENGLASS_DATA_DIR` to override those paths. npm publishing is prepared but the first release requires a package owner to publish the initial package and configure the GitHub workflow as a trusted publisher. Until then, use the source installation below.
+
+The setup wizard has separate opt-in switches for starting OpenGlassUI at user login (macOS only) and starting the selected tunnel when the companion starts. The login item takes effect at the next login and points to the current Node executable and installation path; reconfigure it after moving or removing either. Automatic tunnel start requires a completed setup. A public tunnel exposes the gateway and Cloudflare Quick Tunnel addresses change on restart.
+
+### Install from source
+
 Clone the repository and install dependencies:
 
 ```sh
@@ -85,9 +93,9 @@ npm start
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The dashboard also contains a step-by-step glasses installation guide. Use **Bestehende Sitzungen** to browse Codex, Claude or Kiro sessions returned for the selected workspace. Large session lists can take time to load. Add more projects locally via **Projekt hinzufügen**; registered projects can then be selected on the glasses. Only continue sessions that are no longer active elsewhere; attaching safely to an externally running session is not supported. Open **Brillen-Simulator** for a keyboard-driven preview using live data.
 
-The setup has five main steps. You can select multiple agents, review and import selected discovered projects for each agent, start an installed tunnel or enter an HTTPS address, optionally install cloudflared with Homebrew on macOS or opt in to starting the selected tunnel on companion startup, generate a pairing QR code, and check for a paired device. The wizard saves non-secret selections locally in `.openglass/setup.json`; provider authentication is handled separately. If Tailscale requires Serve activation, the setup provides its authorization link and resumes once approved; HTTPS may also need to be enabled. A detected pairing does not establish that the glasses display or wristband works. The setup supports English and partial German translations; the rest of the interface has not yet been fully migrated to internationalization.
+The setup has six main steps. You can select multiple agents, review and import selected discovered projects for each agent, start an installed tunnel or enter an HTTPS address, optionally install cloudflared with Homebrew on macOS or opt in to starting the selected tunnel on companion startup, generate a pairing QR code, choose automatic login and tunnel startup, and check for a paired device. The wizard saves non-secret selections locally in `.openglass/setup.json`; provider authentication is handled separately. If Tailscale requires Serve activation, the setup provides its authorization link and resumes once approved; HTTPS may also need to be enabled. A detected pairing does not establish that the glasses display or wristband works. The setup supports English and partial German translations; the rest of the interface has not yet been fully migrated to internationalization.
 
-In **Bestehende Sitzungen**, select an agent and choose **Alle Sitzungen suchen** to discover its locally available sessions across projects. Results are visible only on the local dashboard. Choosing a result registers its project if necessary and opens the session; registered projects become available to paired devices. Sessions without a known, accessible local working directory are excluded. Providers can differ in which historical sessions they expose; continuing a session still requires the agent's own authentication and support.
+In **Bestehende Sitzungen**, select an agent and choose **Alle Sitzungen suchen** to discover its locally available sessions across projects. Results are visible only on the local dashboard. Choosing a result registers its project if necessary and opens the session; registered projects become available to paired devices. Sessions without a known, accessible local working directory are excluded. Providers can differ in which historical sessions they expose; continuing a session still requires the agent's own authentication and support. When Kiro reports a session status, the interface shows it as a provider-reported snapshot at lookup time, not verified live activity.
 
 ### Configuration details
 
@@ -153,7 +161,7 @@ The gateway also serves Meta's `/.well-known/meta-wearables-manifest.json` and a
 ## Current technical gaps
 
 - **Physical device validation:** QR deep link, setup, layout, focus order, wristband gestures, text input, WebMCP, reconnection, and long-running use need testing on actual Meta Ray-Ban Display hardware.
-- **Installation and hosting:** Setup scripts and on-demand tunnel start exist, but no signed native installer, automatic updates, stable hosted URL, background service, or managed reverse-proxy access control. Tunnel clients must be installed and ngrok authenticated separately.
+- **Installation and hosting:** Setup scripts and on-demand tunnel start exist, but no signed native installer, automatic updates, stable hosted URL, system-wide service, or managed reverse-proxy access control. Tunnel clients must be installed and ngrok authenticated separately.
 - **Sessions:** No reliable live takeover of sessions running in other clients, no pagination beyond the first 50 sessions, and no full transcript navigation or search. Generic CLI sessions cannot currently be resumed through the app.
 - **Questions and permissions:** Simultaneous requests are queued per task and displayed one at a time; complete multi-select handling is still missing. Not every Codex server-request type is supported. AI-generated choices depend on the agent and may be absent.
 - **Security:** No hardware-bound credentials, encrypted client storage, granular authorization, formal security review, or production-grade proxy authentication. The current deployment must remain a trusted, experimental single-user setup.

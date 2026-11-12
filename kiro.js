@@ -69,7 +69,7 @@ async function kiroRead(command, workspace, action, all=false, agent='kiro', arg
    cursor=list.nextCursor;
    if(cursor!=null){if(typeof cursor!=='string' || cursors.has(cursor) || cursors.size>=1000)throw new Error('Kiro hat eine ungültige Seitennavigation zurückgegeben.');cursors.add(cursor);}
   } while(cursor!=null);
-  if(!action)return sessions.map(s=>({id:s.sessionId,agent,title:s.title || (agent==='kiro'?'Kiro session':'Agent session'),updatedAt:s.updatedAt,...(all?{cwd:s.cwd}:{})}));
+  if(!action)return sessions.map(s=>({id:s.sessionId,agent,title:s.title || (agent==='kiro'?'Kiro session':'Agent session'),updatedAt:s.updatedAt,...(agent==='kiro'&&typeof s._meta?.kiro?.status==='string'&&/^[a-z_ -]{1,40}$/i.test(s._meta.kiro.status)?{reportedStatus:s._meta.kiro.status}:{}),...(all?{cwd:s.cwd}:{})}));
   if(!sessions.some(s=>s.sessionId===action))throw new Error('Sitzung nicht im konfigurierten Projekt gefunden.');
   if(!init.agentCapabilities.loadSession)throw new Error('Diese Kiro-Version unterstützt das Öffnen nicht.');
   await call('session/load',{sessionId:action,cwd:workspace,mcpServers:[]});return replay;

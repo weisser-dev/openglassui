@@ -10,6 +10,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { listAgentSessions, readAgentSession, runClaude, runCodex, discoverAgentProjects, listGlobalSessions, listCodexModels } from './sessions.js';
 import { runKiro, listKiroSessions, readKiroSession, listAllKiroSessions, listOpenCodeSessions, readOpenCodeSession, listAllOpenCodeSessions } from './kiro.js';
 import { createTunnelManager } from './tunnel.js';
+import { createAutostart } from './autostart.js';
 import { createAcpClient } from './agent-client.js';
 import { createCloudflaredInstaller } from './tunnel-installer.js';
 import { createPushService } from './push.js';
@@ -26,6 +27,7 @@ const workspace = await realpath(path.resolve(path.dirname(configPath), config.w
 const agents = config.agents || [];
 const dataDir = path.resolve(process.env.OPENGLASS_DATA_DIR || path.join(root, '.openglass'));
 await mkdir(dataDir, { recursive:true, mode:0o700 });
+const autostart = createAutostart({ server: path.join(root, 'server.js'), config: configPath, dataDir });
 const customAgentsPath=path.join(dataDir,'acp-agents.json');let customAgents=[];try{customAgents=JSON.parse(await readFile(customAgentsPath,'utf8'));if(!Array.isArray(customAgents))throw new Error('Invalid ACP agent list.');}catch(error){if(error.code!=='ENOENT')throw error;}
 for(const entry of customAgents)if(entry?.type==='acp'&&!agents.some(agent=>agent.id===entry.id))agents.push(entry);
 const isGenericAcp=agent=>agent?.type==='acp'&&!['kiro','opencode','codex','claude'].includes(agent.id);
@@ -157,6 +159,7 @@ const handler = async (req, res) => {
       if (req.method === 'GET' && url.pathname === '/api/push/status') { const device=requestDevice(req);if(!device)return json(res,403,{error:'Only paired devices can check background alerts.'});return json(res,200,{enabled:Boolean(device.push)}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
+      if (req.method === 'GET' && url.pathname === '/api/autostart') { if(!isLocal)return json(res,403,{error:'Available locally only.'}); return json(res,200,await autostart.status()); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel/install-status') {if(!isLocal)return json(res,403,{error:'Available locally only.'});return json(res,200,{...tunnelInstaller.status(),platform:process.platform,brewAvailable:await executableAvailable('brew'),installed:await executableAvailable('cloudflared')});}
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
       if (req.method === 'GET' && url.pathname === '/api/setup') {if(!isLocal)return json(res,403,{error:'Available locally only.'});const available=await Promise.all(agents.map(async agent=>({id:agent.id,name:agent.name,type:agent.type||'agent',installed:await executableAvailable(agent.command)})));return json(res,200,{setup:setupState,agents:available,projects:[...projects.values()].map(({id,name,path})=>({id,name,path})),tunnel:tunnel.status()});}
@@ -168,6 +171,7 @@ const handler = async (req, res) => {
       }
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
+      if(url.pathname==='/api/autostart'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req);if(typeof input.enabled!=='boolean')return json(res,400,{error:'Invalid login start setting.'});return json(res,200,await autostart.set(input.enabled));}
       if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req),selected=input.agents ?? [input.agent];if(!Array.isArray(selected)||!selected.length||new Set(selected).size!==selected.length||selected.some(id=>!agents.some(a=>a.id===id))||!selected.includes(input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale'].includes(input.provider)||typeof input.complete!=='boolean'||(input.autoStartTunnel!==undefined&&typeof input.autoStartTunnel!=='boolean'))return json(res,400,{error:'Invalid setup selection.'});setupState={agent:input.agent,agents:selected,projectId:input.projectId,provider:input.provider,complete:input.complete,autoStartTunnel:input.autoStartTunnel??setupState.autoStartTunnel??false};await saveSetup();setupSelectionSaved=true;changed();return json(res,200,{setup:setupState});}
       if(url.pathname==='/api/push/subscription' || url.pathname==='/api/push/unsubscribe'){
         const device=requestDevice(req);if(!device)return json(res,403,{error:'Nur gekoppelte Geräte können Push konfigurieren.'});
