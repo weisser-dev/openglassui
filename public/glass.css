@@ -12,3 +12,6 @@
 .typing-indicator{display:flex;align-items:center;gap:5px;min-height:20px}.chat-output:not(:empty)+.typing-indicator{margin-top:8px}.typing-indicator span{width:6px;height:6px;border-radius:50%;background:#c9e8b8;animation:typing-pulse 1.2s infinite ease-in-out}.typing-indicator span:nth-child(2){animation-delay:.2s}.typing-indicator span:nth-child(3){animation-delay:.4s}@keyframes typing-pulse{0%,60%,100%{opacity:.3}30%{opacity:1}}@media (prefers-reduced-motion:reduce){.typing-indicator span{animation:none;opacity:.8}}
 
 .composer-send:disabled{background:#283127;border-color:#465345;color:#899487;cursor:not-allowed;opacity:.7}
+
+/* Scale text while keeping controls and layout usable at each setting. */
+.wearable{font-size:calc(16px * var(--glass-text-scale,1))}.wearable h1{font-size:calc(29px * var(--glass-text-scale,1))}.wearable .hint,.wearable .composer-send{font-size:calc(13px * var(--glass-text-scale,1))}.wearable .bubble{font-size:calc(14px * var(--glass-text-scale,1))}.wearable .item-copy strong{font-size:calc(15px * var(--glass-text-scale,1))}.wearable .item-copy small,.wearable .task-events,.wearable .usage{font-size:calc(12px * var(--glass-text-scale,1))}.wearable .eyebrow,.wearable footer{font-size:calc(10px * var(--glass-text-scale,1))}.composer-bar textarea{height:auto;min-height:48px;line-height:1.4}.text-preview{margin:18px 0 24px}
