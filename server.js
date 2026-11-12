@@ -10,6 +10,7 @@ import { listAgentSessions, readAgentSession, runClaude, runCodex } from './sess
 import { runKiro, listKiroSessions, readKiroSession } from './kiro.js';
 import { createTunnelManager } from './tunnel.js';
 import { createPushService } from './push.js';
+import { formatSession } from './session-format.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.resolve(process.env.OPENGLASS_CONFIG || path.join(root, 'config.json'));
@@ -133,7 +134,7 @@ const handler = async (req, res) => {
       if (!isLocal && !authorized(req)) return json(res,401,{error:'Bitte zuerst koppeln.'});
       if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); return json(res,200,{sessions:await (agent==='kiro'?listKiroSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command))}); }
       const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude|kiro)\/([a-z0-9_-]+)$/i);
-      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); return json(res,200,{session:await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command))}); }
+      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
@@ -175,7 +176,7 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/sessions/open') {
         const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || !['codex','claude','kiro'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
         const project=projectById(input.projectId || 'default'); const data=await (input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));
-        const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:JSON.stringify(data,null,2).slice(-100000),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
+        const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:formatSession(data,input.agent),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
         tasks.set(task.id,task);save();return json(res,201,exposed(task));
       }
       if (url.pathname === '/api/tasks') {
