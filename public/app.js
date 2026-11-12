@@ -10,6 +10,7 @@ async function refresh() {
     const container=$('#tasks');
     if (!state.tasks.length) return;
     if (!selected || !state.tasks.some(t=>t.id===selected)) selected=state.tasks[0].id;
+    if (container.contains(document.activeElement) && ['TEXTAREA','BUTTON'].includes(document.activeElement.tagName) && !document.activeElement.dataset.task) return;
     const openId=document.activeElement?.dataset?.task;
     container.replaceChildren();
     for (const task of state.tasks) {
@@ -17,7 +18,7 @@ async function refresh() {
       const title=el('div',''); title.append(el('span','agent-label',task.agentName),el('strong','task-prompt',task.prompt));
       button.append(title,el('span','status '+task.status,statusText[task.status] || task.status));
       button.onclick=()=>{selected=selected===task.id?'':task.id; refresh();}; card.append(button);
-      if (selected===task.id) { const details=el('div','task-details'); const out=el('pre','output',task.output || 'Warte auf Ausgabe …'); details.append(out); if(task.status==='running'){const stop=el('button','stop','Aufgabe stoppen'); stop.onclick=async()=>{await fetch(`/api/tasks/${task.id}/stop`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); refresh();};details.append(stop);} card.append(details); }
+      if (selected===task.id) { const details=el('div','task-details'); const out=el('pre','output',task.output || 'Warte auf Ausgabe …'); details.append(out); if(task.status==='running'){const stop=el('button','stop','Aufgabe stoppen'); stop.onclick=async()=>{await fetch(`/api/tasks/${task.id}/stop`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); refresh();};details.append(stop);} else if(task.sessionId) {const form=el('form','follow'); const input=el('textarea'); input.placeholder='Folgeanweisung …'; input.required=true; const send=el('button','primary','Sitzung fortsetzen ↗'); send.type='submit'; form.append(input,send); form.onsubmit=async e=>{e.preventDefault(); const r=await fetch(`/api/tasks/${task.id}/resume`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:input.value})}); const result=await r.json(); if(!r.ok)alert(result.error);else refresh();}; details.append(form);} card.append(details); }
       container.append(card);
     }
     if(openId) container.querySelector(`[data-task="${CSS.escape(openId)}"]`)?.focus({preventScroll:true});
@@ -25,3 +26,6 @@ async function refresh() {
 }
 $('#task-form').addEventListener('submit', async e=>{ e.preventDefault(); const button=e.currentTarget.querySelector('button'); button.disabled=true; try { const r=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:$('#agent').value,prompt:$('#prompt').value})}); const result=await r.json(); if(!r.ok) throw new Error(result.error); selected=result.id; $('#prompt').value=''; await refresh(); } catch(err){alert(err.message);} finally {button.disabled=false;} });
 refresh(); setInterval(refresh,2000);
+
+$('#pair-form').addEventListener('submit', async e => { e.preventDefault(); try { const r=await fetch('/api/pairing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('#public-url').value})}); const data=await r.json(); if(!r.ok) throw new Error(data.error); $('#pair-qr').src=data.qr; $('#pair-link').href=data.deepLink; $('#pair-result').hidden=false; } catch(error) { alert(error.message); } });
+$('#revoke').onclick=async()=>{ await fetch('/api/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); $('#pair-result').hidden=true; alert('Alle Brillenverbindungen wurden getrennt.'); };
