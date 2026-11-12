@@ -26,3 +26,11 @@ test('Codex-Adapter zeigt Rückfrage und gibt nur ausgewählte Einzelfreigabe we
   assert.equal(seen.kind,'approval');assert.equal(seen.input.command,'npm test');assert.equal(output,'accept');assert.deepEqual(events,[{id:'cmd',title:'Befehl',status:'inProgress'},{id:'cmd',title:'Befehl',status:'completed'}]);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('Codex stop terminates an unresponsive app server',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'og-codex-stop-'));const file=path.join(dir,'codex');
+ const script=`#!${process.execPath}
+ const readline=require('node:readline');const send=x=>console.log(JSON.stringify(x));readline.createInterface({input:process.stdin}).on('line',s=>{const m=JSON.parse(s);if(m.method==='initialize')send({id:m.id,result:{}});if(m.method==='thread/start')send({id:m.id,result:{thread:{id:'thread'}}});if(m.method==='turn/start'){send({id:m.id,result:{turn:{id:'turn'}}});setTimeout(()=>send({method:'item/started',params:{threadId:'thread',item:{id:'cmd',type:'commandExecution'}}}),20)} });`;
+ await writeFile(file,script);await chmod(file,0o755);
+ try{let handle;const result=new Promise(resolve=>{handle=runCodex({workspace:dir,command:file,prompt:'Test',onSession(){},onText(){},onEvent(){handle.kill();},onDecision:async()=>({type:'deny'}),onDone:resolve});});const error=await result;assert.match(error.message,/Gestoppt/);}finally{await rm(dir,{recursive:true,force:true});}
+});

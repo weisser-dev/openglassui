@@ -230,4 +230,4 @@ const heartbeat=setInterval(()=>{for(const ws of sockets)if(ws.readyState===WebS
 server.listen(port,host,()=>console.log(`OpenGlassUI läuft lokal: http://${host}:${port}\nProjekt: ${workspace}`));
 gateway.listen(gatewayPort,host,()=>console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`));
 
-for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{tunnel.stop();for(const ws of sockets)ws.close();gateway.close();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),1000).unref();});
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),1500).unref();});
