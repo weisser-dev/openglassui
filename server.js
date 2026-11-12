@@ -55,7 +55,7 @@ function changed(){revision++;for(const notify of [...watchers])notify();for(con
 const port = Number(process.env.PORT || 4173), gatewayPort=Number(process.env.OPENGLASS_GATEWAY_PORT || port+1), host = '127.0.0.1';
 if(!Number.isInteger(port) || !Number.isInteger(gatewayPort) || port<1 || gatewayPort<1 || port>65535 || gatewayPort>65535 || port===gatewayPort) throw new Error('Ungültiger lokaler oder Gateway-Port.');
 const tunnel=createTunnelManager({port:gatewayPort});
-const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml' };
+const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png' };
 function json(res, status, data) { res.writeHead(status, { 'Content-Type':'application/json', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer' }); res.end(JSON.stringify(data)); }
 function exposed(task) { const { process, ...data } = task; return data; }
 let saveQueue = Promise.resolve();
@@ -235,7 +235,7 @@ const handler = async (req, res) => {
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js','favicon.svg','setup.js','i18n.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js','favicon.svg','setup-glasses.png','setup.js','i18n.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,error.status || 400,{error:error.message}); }

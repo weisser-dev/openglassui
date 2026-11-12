@@ -20,6 +20,7 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
  const server=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:port,OPENGLASS_CONFIG:path.join(dir,'config.json'),OPENGLASS_DATA_DIR:path.join(dir,'data')},stdio:'ignore'});
  try {
   let ready=false; for(let i=0;i<50;i++){try{await fetch(base+'/api/state');ready=true;break;}catch{await delay(50);}} assert.ok(ready);
+  const setupLogo=await fetch(base+'/setup-glasses.png');assert.equal(setupLogo.status,200);assert.equal(setupLogo.headers.get('content-type'),'image/png');
   const setup=await (await fetch(base+'/api/setup')).json();assert.equal(setup.setup.complete,false);assert.equal(setup.agents[0].installed,true);
   const savedSetup=await fetch(base+'/api/setup',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agent:'mock',agents:['mock','mock2'],projectId:'default',provider:'tailscale',complete:true,token:'must-not-persist'})});assert.equal(savedSetup.status,200);const setupFile=await readFile(path.join(dir,'data','setup.json'),'utf8');assert.equal(JSON.parse(setupFile).provider,'tailscale');assert.deepEqual(JSON.parse(setupFile).agents,['mock','mock2']);assert.doesNotMatch(setupFile,/must-not-persist/);
   assert.equal((await fetch(`http://127.0.0.1:${Number(port)+1}/api/setup`)).status,401);
