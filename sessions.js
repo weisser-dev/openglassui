@@ -43,14 +43,15 @@ export async function readAgentSession(agent,id,workspace,command='codex') {
  if(agent==='claude')return await getSessionMessages(id,{dir:workspace,limit:100});
  return (await codexRequest('thread/read',{threadId:id,includeTurns:true},command)).thread;
 }
-export function runClaude({prompt,workspace,sessionId,onMessage,onDecision,onDone,queryImpl=query}) {
+export function runClaude({prompt,workspace,sessionId,model,onModels=()=>{},onMessage,onDecision,onDone,queryImpl=query}) {
  const abort=new AbortController();
- const process=queryImpl({prompt,options:{cwd:workspace,...(sessionId?{resume:sessionId}:{}),settingSources:['user','project','local'],systemPrompt:{type:'preset',preset:'claude_code',append:'Wenn du eine inhaltliche Entscheidung des Nutzers brauchst, nutze AskUserQuestion und schlage anhand der Aufgabe und bisherigen Ergebnisse kurze, konkrete Auswahlmöglichkeiten vor. Erfinde keine Freigaben und triff keine Entscheidung für den Nutzer.'},abortController:abort,permissionMode:'default',canUseTool:async (toolName,input,extra)=>{
+ const process=queryImpl({prompt,options:{cwd:workspace,...(sessionId?{resume:sessionId}:{}),...(model?{model}:{}),settingSources:['user','project','local'],systemPrompt:{type:'preset',preset:'claude_code',append:'Wenn du eine inhaltliche Entscheidung des Nutzers brauchst, nutze AskUserQuestion und schlage anhand der Aufgabe und bisherigen Ergebnisse kurze, konkrete Auswahlmöglichkeiten vor. Erfinde keine Freigaben und triff keine Entscheidung für den Nutzer.'},abortController:abort,permissionMode:'default',canUseTool:async (toolName,input,extra)=>{
    const answer=await onDecision({id:extra.toolUseID,toolName,input,description:extra.description||'',kind:toolName==='AskUserQuestion'?'question':'approval'},extra.signal);
    if(answer?.type==='allow') return {behavior:'allow',updatedInput:input};
    if(answer?.type==='answer' && toolName==='AskUserQuestion') return {behavior:'allow',updatedInput:{...input,answers:answer.answers}};
    return {behavior:'deny',message:'Vom Nutzer abgelehnt oder abgebrochen.'};
  }}});
+ if(typeof process.supportedModels==='function')Promise.resolve().then(()=>process.supportedModels()).then(onModels).catch(()=>{});
  (async()=>{try{for await(const message of process)onMessage(message);onDone(null);}catch(error){onDone(error);}})();
  return {kill(){abort.abort();process.close();}};
 }
