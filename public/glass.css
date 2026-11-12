@@ -10,3 +10,5 @@
 /* The entire answer, including its speaker, shares one rounded focus ring. */
 .answer-bubble:focus-within{outline:3px solid #c4ff77;outline-offset:3px}.answer-bubble .chat-output:focus-visible{outline:none}
 .typing-indicator{display:flex;align-items:center;gap:5px;min-height:20px}.chat-output:not(:empty)+.typing-indicator{margin-top:8px}.typing-indicator span{width:6px;height:6px;border-radius:50%;background:#c9e8b8;animation:typing-pulse 1.2s infinite ease-in-out}.typing-indicator span:nth-child(2){animation-delay:.2s}.typing-indicator span:nth-child(3){animation-delay:.4s}@keyframes typing-pulse{0%,60%,100%{opacity:.3}30%{opacity:1}}@media (prefers-reduced-motion:reduce){.typing-indicator span{animation:none;opacity:.8}}
+
+.composer-send:disabled{background:#283127;border-color:#465345;color:#899487;cursor:not-allowed;opacity:.7}
