@@ -7,10 +7,10 @@ vm.runInContext(await readFile(new URL('../public/usage.js',import.meta.url),'ut
 const format=context.window.formatUsage;
 test('usage formatting reports only provider-supplied token, context and cost values',()=>{
  const codex=format({provider:'codex',tokenUsage:{total:{inputTokens:1100,outputTokens:25,totalTokens:1125},modelContextWindow:10000}});
- assert.match(codex,/Eingabe: 1\.100 Tokens/);assert.match(codex,/Ausgabe: 25 Tokens/);assert.doesNotMatch(codex,/Kosten/);
+ assert.match(codex,/Input: 1,100 Tokens/);assert.match(codex,/Output: 25 Tokens/);assert.doesNotMatch(codex,/cost/);
  const claude=format({provider:'claude',usage:{input_tokens:4,output_tokens:7},costUsd:0.0123});assert.match(claude,/\$0\.0123/);
- assert.match(codex,/gemeldete Gesamtsumme/);assert.match(claude,/letzte gemeldete Ausführung/);
- assert.match(format({provider:'kiro',context:{usagePercentage:42.5},turn:{promptTurnSummaries:[{unit:'credit',unitPlural:'credits',usage:2}]}}),/Letzte Runde: 2 credits/);
+ assert.match(codex,/reported total/);assert.match(claude,/last reported run/);
+ assert.match(format({provider:'kiro',context:{usagePercentage:42.5},turn:{promptTurnSummaries:[{unit:'credit',unitPlural:'credits',usage:2}]}}),/Last turn: 2 credits/);
  assert.match(format({provider:'kiro',context:{usagePercentage:42.5}}),/42\.5 %/);
- assert.match(format({provider:'kiro'}),/Keine detaillierten Angaben/);
+ assert.match(format({provider:'kiro'}),/No detailed usage/);
 });
