@@ -23,11 +23,11 @@ async function refresh(force=false){try{state=await api('/api/state');
 async function watchChanges(){while(connected){try{const since=state?.revision ?? 0;const result=await api(`/api/changes?since=${since}`);if(result.revision!==since)await refresh();}catch(error){if(error.status===401){connected=false;$('#connection').textContent='NICHT VERBUNDEN';$('#message').hidden=false;$('#message').textContent='Verbindung widerrufen oder Anmeldung abgelaufen. Bitte erneut koppeln.';return;}await new Promise(resolve=>setTimeout(resolve,5000));await refresh();}}}
 function watchEvents(){
  if(!('WebSocket' in window)){watchChanges();return;}
- let socket,opened=false,retry,refreshTimer;
+ let socket,opened=false,firstRevision=true,refreshTimer;
  try{socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/events`);}catch{watchChanges();return;}
  socket.onopen=()=>{opened=true;socket.send(JSON.stringify({token}));};
- socket.onmessage=event=>{try{const eventData=JSON.parse(event.data);if(eventData.revision!==state?.revision && !refreshTimer)refreshTimer=setTimeout(()=>{refreshTimer=null;refresh();},250);}catch{}};
- socket.onclose=event=>{if(event.code===1008){connected=false;$('#connection').textContent='NICHT VERBUNDEN';$('#message').hidden=false;$('#message').textContent='Verbindung widerrufen oder Anmeldung abgelaufen. Bitte erneut koppeln.';return;}if(!opened){watchChanges();return;}retry=setTimeout(()=>{if(connected)watchEvents();},5000);};
+ socket.onmessage=event=>{try{const eventData=JSON.parse(event.data);const needsRefresh=firstRevision || eventData.revision!==state?.revision;firstRevision=false;if(needsRefresh && !refreshTimer)refreshTimer=setTimeout(()=>{refreshTimer=null;refresh();},250);}catch{}};
+ socket.onclose=event=>{if(refreshTimer)clearTimeout(refreshTimer);$('#connection').textContent='NICHT VERBUNDEN';if(event.code===1008){connected=false;$('#message').hidden=false;$('#message').textContent='Verbindung widerrufen oder Anmeldung abgelaufen. Bitte erneut koppeln.';return;}if(!opened){watchChanges();return;}setTimeout(()=>{if(connected)watchEvents();},5000);};
  socket.onerror=()=>{};
 }
 async function post(url,data){try{await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});await refresh(true);}catch(e){$('#message').hidden=false;$('#message').textContent=e.message;}}
