@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 // Kiro ACP uses newline-delimited JSON-RPC. One process owns one turn; no prompt
 // is automatically retried after an interrupted transport.
-export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'], workspace, prompt, sessionId, onSession, onText, onUsage, onDecision, onDone}) {
+export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'], workspace, prompt, sessionId, onSession, onText, onUsage, onEvent=()=>{}, onDecision, onDone}) {
  const child=spawn(command,args,{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
  const lines=createInterface({input:child.stdout}); const pending=new Map(); let sequence=0, activeSession=sessionId, replaying=Boolean(sessionId), finished=false;
  const send=payload=>{ if(!child.stdin.destroyed) child.stdin.write(JSON.stringify({jsonrpc:'2.0',...payload})+'\n'); };
@@ -28,7 +28,7 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
    const params=message.params || {}; if(!activeSession || params.sessionId!==activeSession)return;
    const update=params.update || {}; const type=update.sessionUpdate || update.type;
    if(!replaying && ['agent_message_chunk','AgentMessageChunk'].includes(type)){const text=update.content?.text;if(typeof text==='string')onText(text);}
-   if(!replaying && ['tool_call','tool_call_update','ToolCall','ToolCallUpdate'].includes(type)){const title=update.title || update.kind || 'Tool';onText(`\n[${title}${update.status?`: ${update.status}`:''}]\n`);}
+   if(!replaying && ['tool_call','tool_call_update','ToolCall','ToolCallUpdate'].includes(type) && typeof update.toolCallId==='string'){onEvent({id:update.toolCallId,title:typeof update.title==='string'?update.title:undefined,status:typeof update.status==='string'?update.status:undefined});}
    const meta=update._meta?.kiro; if(meta?.kind==='context_usage' || meta?.kind==='turn_completion')onUsage(meta);
   }
  });

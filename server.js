@@ -65,6 +65,16 @@ function queueDecision(task,decision,signal){
  });
 }
 function cancelDecisions(task){while(decisions.get(task.id)?.length)decisions.get(task.id)[0].settle({type:'deny'});}
+// The tool identifier belongs to one agent session; update the same card as
+// ACP progress arrives. Avoid persisting command arguments or other raw payloads.
+function updateTaskEvent(task,event){
+ if(typeof event.id!=='string'||!event.id||event.id.length>200)return;
+ const events=task.events ||= [];let item=events.find(entry=>entry.id===event.id);
+ if(!item){item={id:event.id,title:'Werkzeug',status:'pending',createdAt:new Date().toISOString()};events.push(item);if(events.length>50)events.shift();}
+ if(typeof event.title==='string' && event.title.trim())item.title=event.title.slice(0,160);
+ if(typeof event.status==='string' && event.status.trim())item.status=event.status.slice(0,40);
+ changed();
+}
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
 function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) {
   const workspace = project.path;
@@ -75,7 +85,7 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) 
   tasks.set(task.id, task); save();
   if (agent.id === 'kiro') {
     const handle=runKiro({command:agent.command,args:agent.acpArgs || ['acp','--agent-engine','v3'],workspace,prompt,sessionId:oldTask?.sessionId,
-      onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
+      onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
       onDecision(decision){return queueDecision(task,decision);},
       onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();}});
     task.process=handle;return task;
@@ -188,7 +198,7 @@ const handler = async (req, res) => {
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,400,{error:error.message}); }

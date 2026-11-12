@@ -11,7 +11,7 @@ A local control center for coding agents, with an experimental web interface for
 | Local dashboard | Start and stop tasks, view output, and continue supported sessions | The current interface and agent instructions are in German |
 | Codex | Local app-server adapter, output, session browser, follow-up turns, supported questions and one-time approvals | Uses the experimental `default_mode_request_user_input` flag; supported request types and Codex versions may change |
 | Claude Code | Claude Agent SDK adapter, session browser, follow-up turns, question and permission callbacks | Adapter flows have automated tests with a simulated SDK. A real run failed because the test machine's OAuth session had expired; reauthentication and end-to-end validation are still needed |
-| Kiro CLI | ACP V3 adapter with session browsing, task execution, one-time permissions and reported usage | A real task and resume were tested locally; permission handling and usage display need further end-to-end verification |
+| Kiro CLI | ACP V3 adapter with session browsing, task execution, tool-event timeline, one-time permissions and reported usage | A real task, tool events, context usage and resume were tested locally; real permission handling and visual usage display need further end-to-end verification |
 | Other CLIs | Configurable command and arguments; prompts are sent via stdin without a shell | The program must accept stdin. Output is raw; there is no generic session discovery or interactive decision support |
 | Glasses and voice | Experimental glasses page, per-device pairing, project selection, in-app notices, directional-key handling, and WebMCP tools | Requires an HTTPS tunnel; device installation, gesture handling, dictation, background push, and Meta AI availability are unverified |
 
@@ -54,7 +54,7 @@ Create a local configuration from the example and adjust it for your machine:
 cp config.example.json config.json
 ```
 
-On Windows, copy `config.example.json` to `config.json` using Explorer or your shell. Alternatively, `./setup.sh` on macOS/Linux or `setup.bat` on Windows installs dependencies and creates the configuration if it does not already exist. These scripts are not signed native installers.
+On Windows, copy `config.example.json` to `config.json` using Explorer or your shell. Alternatively, `./setup.sh` on macOS/Linux or `setup.bat` on Windows installs dependencies and creates the configuration if it does not already exist. On macOS, `Install-OpenGlassUI.command` and `Start-OpenGlassUI.command` can also be opened from Finder; Windows users can run `setup.bat` and `Start-OpenGlassUI.bat`. These are scripts, not signed native installers, and platform-specific execution still needs verification.
 
 Set `workspace` to the project the agents should work in. A relative path is resolved relative to the configuration file. Configure the agent IDs, executable names, and arguments under `agents`; `config.json` is ignored by Git. Agent sign-in, provider settings, and permission policies remain the responsibility of the respective tools.
 
@@ -117,8 +117,8 @@ The glasses page uses authenticated WebSocket revision events with long-poll fal
 - **Sessions:** No reliable live takeover of sessions running in other clients, no pagination beyond the first 50 sessions, and no full transcript navigation or search. Generic CLI sessions cannot currently be resumed through the app.
 - **Questions and permissions:** Simultaneous requests are queued per task and displayed one at a time; complete multi-select handling is still missing. Not every Codex server-request type is supported. AI-generated choices depend on the agent and may be absent.
 - **Security:** No hardware-bound credentials, encrypted client storage, granular authorization, formal security review, or production-grade proxy authentication. The current deployment must remain a trusted, experimental single-user setup.
-- **Reliability and UX:** No agent health checks, task deletion, rich structured event timeline, reliable child-process-tree termination, comprehensive accessibility testing, or English UI. Outputs are bounded and may be truncated.
-- **Testing:** Automated tests simulate agent decision paths and tunnel processes. A real Kiro task, session list, and continuation were checked locally; a real Claude account, end-to-end tunnel traffic, WebMCP, simulator interaction, and physical glasses still need verification. Cloudflare Quick Tunnel startup was exercised locally against an isolated test target.
+- **Reliability and UX:** No agent health checks, task deletion, cross-agent structured event timeline, reliable child-process-tree termination, comprehensive accessibility testing, or English UI. Kiro tool events are shown as a bounded per-task timeline. Outputs are bounded and may be truncated.
+- **Testing:** Automated tests simulate agent decision paths and tunnel processes. A real Kiro task through the companion API, tool events, context usage, session list, and continuation were checked locally; a real Claude account, end-to-end tunnel traffic, WebMCP, simulator interaction, and physical glasses still need verification. Cloudflare Quick Tunnel startup was exercised locally against an isolated test target.
 
 ## Tests
 
@@ -140,3 +140,7 @@ If Claude reports that its OAuth session has expired, authenticate again using t
 - [Kiro CLI headless mode](https://kiro.dev/docs/cli/headless/)
 
 For the Meta developer flow see [Meta setup](docs/META_SETUP.md). For device-neutral boundaries and future Rokid work see [architecture](docs/ARCHITECTURE.md). Rokid support is not implemented.
+
+## License
+
+No license file has been selected for this repository yet.
