@@ -6,8 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
 import { WebSocketServer, WebSocket } from 'ws';
-import { listAgentSessions, readAgentSession, runClaude, runCodex } from './sessions.js';
-import { runKiro, listKiroSessions, readKiroSession } from './kiro.js';
+import { listAgentSessions, readAgentSession, runClaude, runCodex, discoverAgentProjects, listGlobalSessions } from './sessions.js';
+import { runKiro, listKiroSessions, readKiroSession, listAllKiroSessions } from './kiro.js';
 import { createTunnelManager } from './tunnel.js';
 import { createPushService } from './push.js';
 import { formatSession } from './session-format.js';
@@ -47,7 +47,7 @@ function changed(){revision++;for(const notify of [...watchers])notify();for(con
 const port = Number(process.env.PORT || 4173), gatewayPort=Number(process.env.OPENGLASS_GATEWAY_PORT || port+1), host = '127.0.0.1';
 if(!Number.isInteger(port) || !Number.isInteger(gatewayPort) || port<1 || gatewayPort<1 || port>65535 || gatewayPort>65535 || port===gatewayPort) throw new Error('Ungültiger lokaler oder Gateway-Port.');
 const tunnel=createTunnelManager({port:gatewayPort});
-const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8' };
+const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml' };
 function json(res, status, data) { res.writeHead(status, { 'Content-Type':'application/json', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer' }); res.end(JSON.stringify(data)); }
 function exposed(task) { const { process, ...data } = task; return data; }
 let saveQueue = Promise.resolve();
@@ -156,6 +156,19 @@ const handler = async (req, res) => {
       if(deviceMatch){if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const device=devices.get(deviceMatch[1]);if(!device)return json(res,404,{error:'Gerät nicht gefunden.'});if(deviceMatch[2]==='revoke')devices.delete(device.id);else{const input=await body(req);if(typeof input.name!=='string'||!input.name.trim()||input.name.length>80)return json(res,400,{error:'Bitte einen gültigen Namen angeben.'});device.name=input.name.trim();}await saveDevices();changed();return json(res,200,{ok:true});}
       if (url.pathname === '/api/tunnel/start') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); const input=await body(req);return json(res,200,tunnel.start(input.provider)); }
       if (url.pathname === '/api/tunnel/stop') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,tunnel.stop()); }
+      if (url.pathname === '/api/sessions/discover') {
+        if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const input=await body(req),cfg=agents.find(a=>a.id===input.agent);
+        if(!cfg || !['codex','claude','kiro'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
+        const sessions=await (input.agent==='kiro'?listAllKiroSessions(workspace,cfg.command):listGlobalSessions(input.agent,cfg.command));const visible=[];
+        for(const session of sessions){try{if(typeof session.cwd!=='string'||!path.isAbsolute(session.cwd))continue;const cwd=await realpath(session.cwd);const stat=await import('node:fs/promises').then(fs=>fs.stat(cwd));if(!stat.isDirectory())continue;visible.push({...session,cwd,projectId:[...projects.values()].find(p=>p.path===cwd)?.id || null});}catch{}}
+        return json(res,200,{sessions:visible});
+      }
+      if (url.pathname === '/api/projects/discover') {
+        if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});await body(req);
+        const result=await discoverAgentProjects({command:agents.find(a=>a.id==='codex')?.command || 'codex'});const found=new Map();
+        for(const candidate of result.projects){try{if(!path.isAbsolute(candidate.path))continue;const resolved=await realpath(candidate.path);const stat=await import('node:fs/promises').then(fs=>fs.stat(resolved));if(!stat.isDirectory() || [...projects.values()].some(p=>p.path===resolved))continue;const item=found.get(resolved) || {path:resolved,name:path.basename(resolved),sources:[],sessions:0};item.sessions+=candidate.sessions;item.sources=[...new Set([...item.sources,...candidate.sources])];found.set(resolved,item);}catch{}}
+        return json(res,200,{projects:[...found.values()],unavailable:result.unavailable});
+      }
       const projectMatch=url.pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/(remove|rename)$/);
       if(projectMatch){if(!isLocal)return json(res,403,{error:'Projekte können nur lokal konfiguriert werden.'});const project=projects.get(projectMatch[1]);if(!project)return json(res,404,{error:'Projekt nicht gefunden.'});if(projectMatch[2]==='remove'){if([...tasks.values()].some(task=>task.projectId===project.id && task.status==='running'))return json(res,409,{error:'Dieses Projekt hat noch laufende Aufgaben.'});projects.delete(project.id);}else{const input=await body(req);if(typeof input.name!=='string'||!input.name.trim()||input.name.length>100)return json(res,400,{error:'Bitte einen gültigen Namen angeben.'});project.name=input.name.trim();}await saveProjects();changed();return json(res,200,{ok:true});}
       if (url.pathname === '/api/projects') {
@@ -212,7 +225,7 @@ const handler = async (req, res) => {
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js','favicon.svg','setup.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,error.status || 400,{error:error.message}); }

@@ -25,6 +25,17 @@ export async function listAgentSessions(agent, workspace, command='codex') {
  if(agent==='codex') {const result=await codexRequest('thread/list',{cwd:workspace,limit:50,sortKey:'updated_at'},command);return result.data.map(s=>({id:s.id,agent,title:s.name||s.preview||'Codex-Sitzung',updatedAt:s.updatedAt}));}
  throw new Error('Nicht unterstützter Agent.');
 }
+// Discovery is local and read-only. The caller chooses which paths to register.
+export async function discoverAgentProjects({command='codex',claudeList=listSessions,codexList=()=>codexRequest('thread/list',{limit:50,sortKey:'updated_at'},command)}={}) {
+ const results=await Promise.allSettled([claudeList({includeWorktrees:true}),codexList()]);const entries=new Map(),errors=[];
+ for(let index=0;index<results.length;index++){const provider=index?'codex':'claude',result=results[index];if(result.status==='rejected'){errors.push(provider);continue;}const items=index?result.value?.data:result.value;if(!Array.isArray(items)){errors.push(provider);continue;}for(const item of items){if(typeof item?.cwd!=='string' || !item.cwd)continue;const entry=entries.get(item.cwd) || {path:item.cwd,sources:[],sessions:0};if(!entry.sources.includes(provider))entry.sources.push(provider);entry.sessions++;entries.set(item.cwd,entry);}}
+ return {projects:[...entries.values()],unavailable:errors};
+}
+export async function listGlobalSessions(agent,command='codex') {
+ if(agent==='claude')return (await listSessions({includeWorktrees:true})).map(s=>({id:s.sessionId,agent,cwd:s.cwd,title:s.customTitle||s.summary||s.firstPrompt||'Claude-Sitzung',updatedAt:s.lastModified}));
+ if(agent==='codex')return (await codexRequest('thread/list',{limit:50,sortKey:'updated_at'},command)).data.map(s=>({id:s.id,agent,cwd:s.cwd,title:s.name||s.preview||'Codex-Sitzung',updatedAt:s.updatedAt}));
+ throw new Error('Nicht unterstützter Agent.');
+}
 export async function readAgentSession(agent,id,workspace,command='codex') {
  if(!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Ungültige Sitzungs-ID.');
  const sessions=await listAgentSessions(agent,workspace,command);if(!sessions.some(s=>s.id===id))throw new Error('Sitzung nicht im konfigurierten Projekt gefunden.');

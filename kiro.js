@@ -44,7 +44,7 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
  return {kill(){if(activeSession)send({method:'session/cancel',params:{sessionId:activeSession}});finish(new Error('Gestoppt.'));}};
 }
 
-async function kiroRead(command, workspace, action) {
+async function kiroRead(command, workspace, action, all=false) {
  const child=spawn(command,['acp','--agent-engine','v3'],{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
  child.stderr.resume();
  const lines=createInterface({input:child.stdout});let seq=0,lastReplayType=null;const pending=new Map(), replay=[];
@@ -60,13 +60,13 @@ async function kiroRead(command, workspace, action) {
  try{const init=await call('initialize',{protocolVersion:1,clientCapabilities:{},clientInfo:{name:'openglassui',version:'0.1.0'}});if(!init.agentCapabilities?.sessionCapabilities?.list)throw new Error('Diese Kiro-Version unterstützt die Sitzungsliste nicht.');
   const sessions=[],cursors=new Set(),ids=new Set();let cursor;
   do {
-   const list=await call('session/list',{cwd:workspace,...(cursor!==undefined?{cursor}:{})});
+   const list=await call('session/list',{...(all?{}:{cwd:workspace}),...(cursor!==undefined?{cursor}:{})});
    if(!Array.isArray(list?.sessions))throw new Error('Kiro hat eine ungültige Sitzungsliste zurückgegeben.');
-   for(const session of list.sessions){if(session && session.cwd===workspace && typeof session.sessionId==='string' && !ids.has(session.sessionId)){ids.add(session.sessionId);sessions.push(session);}}
+   for(const session of list.sessions){if(session && (all || session.cwd===workspace) && typeof session.sessionId==='string' && !ids.has(session.sessionId)){ids.add(session.sessionId);sessions.push(session);}}
    cursor=list.nextCursor;
    if(cursor!=null){if(typeof cursor!=='string' || cursors.has(cursor) || cursors.size>=1000)throw new Error('Kiro hat eine ungültige Seitennavigation zurückgegeben.');cursors.add(cursor);}
   } while(cursor!=null);
-  if(!action)return sessions.map(s=>({id:s.sessionId,agent:'kiro',title:s.title || 'Kiro-Sitzung',updatedAt:s.updatedAt}));
+  if(!action)return sessions.map(s=>({id:s.sessionId,agent:'kiro',title:s.title || 'Kiro-Sitzung',updatedAt:s.updatedAt,...(all?{cwd:s.cwd}:{})}));
   if(!sessions.some(s=>s.sessionId===action))throw new Error('Sitzung nicht im konfigurierten Projekt gefunden.');
   if(!init.agentCapabilities.loadSession)throw new Error('Diese Kiro-Version unterstützt das Öffnen nicht.');
   await call('session/load',{sessionId:action,cwd:workspace,mcpServers:[]});return replay;
@@ -74,3 +74,4 @@ async function kiroRead(command, workspace, action) {
 }
 export const listKiroSessions=(workspace,command='kiro-cli')=>kiroRead(command,workspace);
 export const readKiroSession=(workspace,id,command='kiro-cli')=>kiroRead(command,workspace,id);
+export const listAllKiroSessions=(workspace,command='kiro-cli')=>kiroRead(command,workspace,undefined,true);

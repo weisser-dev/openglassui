@@ -66,6 +66,8 @@ npm start
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The dashboard also contains a step-by-step glasses installation guide. Use **Bestehende Sitzungen** to browse Codex, Claude or Kiro sessions returned for the selected workspace. Large session lists can take time to load. Add more projects locally via **Projekt hinzufügen**; registered projects can then be selected on the glasses. Only continue sessions that are no longer active elsewhere; attaching safely to an externally running session is not supported. Open **Brillen-Simulator** for a keyboard-driven preview using live data.
 
+The five-step setup dialog introduces agent setup, session discovery, connectivity, QR pairing and device testing. In **Bestehende Sitzungen**, select an agent and choose **Alle Sitzungen suchen** to discover its locally available sessions across projects. Results are visible only on the local dashboard. Choosing a result registers its project if necessary and opens the session; registered projects become available to paired devices. Sessions without a known, accessible local working directory are excluded. Providers can differ in which historical sessions they expose; continuing a session still requires the agent's own authentication and support.
+
 ### Configuration details
 
 `config.example.json` provides Codex, Claude Code, and Kiro examples. For a custom CLI, add an object with `id`, `name`, `command`, an `args` array, and `input: "stdin"`. The configured command receives the task through stdin and is started with `shell: false`. Only install or configure executables you trust: these agents run with the local user's privileges and their own permission settings.

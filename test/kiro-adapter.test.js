@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,chmod,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {runKiro,listKiroSessions,readKiroSession} from '../kiro.js';
+import {runKiro,listKiroSessions,readKiroSession,listAllKiroSessions} from '../kiro.js';
 
 test('Kiro ACP streams output, usage and forwards only the selected permission',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'og-kiro-'));const file=path.join(dir,'kiro');
@@ -21,6 +21,7 @@ test('Kiro ACP streams output, usage and forwards only the selected permission',
  try{let output='',usage,decision,session;
   await new Promise((resolve,reject)=>runKiro({command:file,workspace:dir,prompt:'Test',onSession:s=>session=s,onText:t=>output+=t,onUsage:u=>usage=u,onDecision:async d=>{decision=d;return {optionId:'yes'};},onDone:e=>e?reject(e):resolve()}));
   const sessions=await listKiroSessions(dir,file);assert.deepEqual(sessions.map(s=>s.id),['first','session-test']);const replay=await readKiroSession(dir,'session-test',file);assert.equal(replay.length,1);assert.equal(replay[0].message.content,'History');await assert.rejects(readKiroSession(dir,'wrong',file));
+  assert.deepEqual((await listAllKiroSessions(dir,file)).map(s=>s.id),['first','session-test','foreign']);
   assert.equal(session,'session-test');assert.equal(output,'Hallo');assert.equal(usage.usagePercentage,12);assert.deepEqual(decision.input.options.map(o=>o.optionId),['yes','no']);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
