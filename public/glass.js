@@ -8,7 +8,7 @@ async function initialize(){
 function node(tag,text){const e=document.createElement(tag);e.textContent=text;return e;}
 async function refresh(force=false){try{state=await api('/api/state');
  const next=new Map(state.tasks.map(t=>[t.id,{status:t.status,decision:t.pendingDecision?.id}]));
- for(const notice of taskNotices(observed,state.tasks)){$('#notice').textContent=`${notice.agentName}: ${notice.text}`;$('#notice').dataset.decision=notice.text==='Entscheidung erforderlich'?notice.taskId:'';$('#notice').hidden=false;}if($('#notice').dataset.decision && !state.tasks.some(t=>t.id===$('#notice').dataset.decision && t.pendingDecision)){const remaining=state.tasks.find(t=>t.pendingDecision);if(remaining){$('#notice').textContent=`${remaining.agentName}: Entscheidung erforderlich`;$('#notice').dataset.decision=remaining.id;}else{$('#notice').hidden=true;$('#notice').dataset.decision='';}}observed=next;$('#connection').textContent='VERBUNDEN';$('#message').hidden=true;$('#main').hidden=false;
+ const notice=wearableNotice(observed,state.tasks),noticeElement=$('#notice');if(notice){noticeElement.textContent=notice.text;noticeElement.dataset.decision=notice.decision?notice.taskId:'';noticeElement.hidden=false;}else if(noticeElement.dataset.decision){noticeElement.hidden=true;noticeElement.dataset.decision='';}observed=next;$('#connection').textContent='VERBUNDEN';$('#message').hidden=true;$('#main').hidden=false;
  const project=$('#project'), projectValue=project.value; if(JSON.stringify([...project.options].map(o=>[o.value,o.textContent]))!==JSON.stringify(state.projects.map(p=>[p.id,p.name]))){project.replaceChildren();for(const p of state.projects){const o=node('option',p.name);o.value=p.id;project.append(o);}if([...project.options].some(o=>o.value===projectValue))project.value=projectValue;}
  if(!$('#agent').options.length)for(const a of state.agents){const o=node('option',a.name);o.value=a.id;$('#agent').append(o);}
  window.renderUsageOverview($('#usage-overview'),state.tasks);
@@ -34,6 +34,7 @@ async function post(url,data){try{await api(url,{method:'POST',headers:{'Content
 $('#push-enable').onclick=async()=>{try{if(!token)throw new Error('Bitte zuerst ein Gerät koppeln.');$('#push-status').textContent='Benachrichtigungen werden eingerichtet …';await enableBackgroundPush(api);$('#push-status').textContent='Hintergrundhinweise aktiviert. Die Zustellung auf diesem Gerät ist noch nicht geprüft.';}catch(error){$('#push-status').textContent=error.message;}};
 $('#push-disable').onclick=async()=>{try{await disableBackgroundPush(api);$('#push-status').textContent='Hintergrundhinweise ausgeschaltet.';}catch(error){$('#push-status').textContent=error.message;}};
 $('#start').onclick=()=>post('/api/tasks',{agentId:$('#agent').value,projectId:$('#project').value,prompt:$('#prompt').value});
+$('#notice').onclick=async()=>{const id=$('#notice').dataset.decision;if(!id)return;selected=id;await refresh(true);$(`#tasks article[data-task="${CSS.escape(id)}"] button[data-task]`)?.focus();};
 document.addEventListener('keydown',e=>{
  const active=document.activeElement;
  if((e.key==='Escape' || e.key==='Backspace') && !['INPUT','TEXTAREA','SELECT'].includes(active.tagName)){if(selected){selected='';refresh(true);e.preventDefault();}return;}

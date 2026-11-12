@@ -16,3 +16,10 @@ test('notices report pending decisions and new terminal changes without replayin
  assert.deepEqual(notices(previous,[{...running,status:'completed'}]),[{taskId:'1',agentName:'Kiro',text:'Aufgabe abgeschlossen'}]);
  assert.equal(notices(previous,[{...running,status:'failed'}])[0].text,'Aufgabe fehlgeschlagen');
 });
+
+test('wearable notice prioritizes outstanding decisions over unrelated completions',()=>{
+ const previous=new Map([['a',{status:'running',decision:'d'}],['b',{status:'running'}]]);
+ const tasks=[{id:'a',agentName:'Claude',status:'running',pendingDecision:{id:'d'}},{id:'b',agentName:'Kiro',status:'completed'}];
+ const notice=JSON.parse(JSON.stringify(context.wearableNotice(previous,tasks)));assert.equal(notice.taskId,'a');assert.equal(notice.decision,true);assert.match(notice.text,/Entscheidung erforderlich/);
+ tasks.push({id:'c',agentName:'Codex',status:'running',pendingDecision:{id:'e'}});assert.match(context.wearableNotice(previous,tasks).text,/2 offen/);
+});
