@@ -31,6 +31,8 @@ function watchEvents(){
  socket.onerror=()=>{};
 }
 async function post(url,data){try{await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});await refresh(true);}catch(e){$('#message').hidden=false;$('#message').textContent=e.message;}}
+$('#push-enable').onclick=async()=>{try{if(!token)throw new Error('Bitte zuerst ein Gerät koppeln.');$('#push-status').textContent='Benachrichtigungen werden eingerichtet …';await enableBackgroundPush(api);$('#push-status').textContent='Hintergrundhinweise aktiviert. Die Zustellung auf diesem Gerät ist noch nicht geprüft.';}catch(error){$('#push-status').textContent=error.message;}};
+$('#push-disable').onclick=async()=>{try{await disableBackgroundPush(api);$('#push-status').textContent='Hintergrundhinweise ausgeschaltet.';}catch(error){$('#push-status').textContent=error.message;}};
 $('#start').onclick=()=>post('/api/tasks',{agentId:$('#agent').value,projectId:$('#project').value,prompt:$('#prompt').value});
 document.addEventListener('keydown',e=>{
  const active=document.activeElement;

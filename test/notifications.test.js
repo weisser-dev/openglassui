@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const source=await readFile(new URL('../public/notifications.js',import.meta.url),'utf8');
 const context=vm.createContext({});vm.runInContext(source,context);
 const notices=(previous,tasks)=>JSON.parse(JSON.stringify(context.taskNotices(previous,tasks)));
-test('notices report new decisions and terminal changes without replaying initial state',()=>{
+test('notices report pending decisions and new terminal changes without replaying old completions',()=>{
  const running={id:'1',agentName:'Kiro',status:'running'};
  assert.deepEqual(notices(null,[running]),[]);
  assert.equal(notices(null,[{...running,pendingDecision:{id:'d0'}}])[0].text,'Entscheidung erforderlich');

@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { listAgentSessions, readAgentSession, runClaude, runCodex } from './sessions.js';
 import { runKiro, listKiroSessions, readKiroSession } from './kiro.js';
 import { createTunnelManager } from './tunnel.js';
+import { createPushService } from './push.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.resolve(process.env.OPENGLASS_CONFIG || path.join(root, 'config.json'));
@@ -36,6 +37,8 @@ const devices=new Map(savedDevices.map(device=>[device.id,device]));
 const hashToken=token=>createHash('sha256').update(token).digest('hex');
 let devicesQueue=Promise.resolve();
 function saveDevices(){const snapshot=JSON.stringify([...devices.values()]);devicesQueue=devicesQueue.catch(()=>{}).then(async()=>{const tmp=`${devicesPath}.tmp`;await writeFile(tmp,snapshot,{mode:0o600});await rename(tmp,devicesPath);});return devicesQueue;}
+const push=await createPushService({dataDir,devices,saveDevices});
+function notifyPush(kind){void push.notify(kind).catch(()=>{});}
 const pairings = new Map(), decisions = new Map();
 let revision=0; const watchers=new Set(), sockets=new Set();
 function changed(){revision++;for(const notify of [...watchers])notify();for(const socket of [...sockets]){if(!socket.isLocal && !authorizedToken(socket.token)) {socket.close(1008,'Zugriff widerrufen');sockets.delete(socket);continue;}if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify({revision}));}}
@@ -50,7 +53,9 @@ function save() { changed(); const snapshot = JSON.stringify([...tasks.values()]
 async function body(req) { let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16384) throw new Error('Eingabe zu lang'); } return JSON.parse(raw || '{}'); }
 function local(req) { return req.socket.localPort===port && [`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host) && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.forwarded; }
 function localOrigin(req) { return req.headers.origin === `http://127.0.0.1:${port}` || req.headers.origin === `http://localhost:${port}`; }
-function authorizedToken(token) {if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))return false;const hash=hashToken(token);return [...devices.values()].some(device=>device.tokenHash===hash);}
+function deviceForToken(token) {if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))return null;const hash=hashToken(token);return [...devices.values()].find(device=>device.tokenHash===hash) || null;}
+function authorizedToken(token) {return Boolean(deviceForToken(token));}
+function requestDevice(req){const header=req.headers.authorization || '';return header.startsWith('Bearer ')?deviceForToken(header.slice(7)):null;}
 function authorized(req) { const header=req.headers.authorization || '';return header.startsWith('Bearer ') && authorizedToken(header.slice(7)); }
 // Multiple agent requests can arrive concurrently. Never auto-approve or silently
 // discard the later ones; present them one at a time, in arrival order.
@@ -60,8 +65,8 @@ function queueDecision(task,decision,signal){
   const queue=decisions.get(task.id) || [];
   const entry={decision,settle:null};
   const abort=()=>entry.settle({type:'deny'});
-  entry.settle=answer=>{const index=queue.indexOf(entry);if(index<0)return;queue.splice(index,1);signal?.removeEventListener('abort',abort);if(queue.length){decisions.set(task.id,queue);task.pendingDecision=queue[0].decision;}else{decisions.delete(task.id);delete task.pendingDecision;}save();resolve(answer);};
-  queue.push(entry);decisions.set(task.id,queue);task.pendingDecision=queue[0].decision;signal?.addEventListener('abort',abort,{once:true});save();
+  entry.settle=answer=>{const index=queue.indexOf(entry);if(index<0)return;queue.splice(index,1);signal?.removeEventListener('abort',abort);if(queue.length){decisions.set(task.id,queue);task.pendingDecision=queue[0].decision;if(index===0 && task.status==='running')notifyPush('decision');}else{decisions.delete(task.id);delete task.pendingDecision;}save();resolve(answer);};
+  queue.push(entry);decisions.set(task.id,queue);task.pendingDecision=queue[0].decision;signal?.addEventListener('abort',abort,{once:true});save();if(queue.length===1 && task.status==='running')notifyPush('decision');
  });
 }
 function cancelDecisions(task){while(decisions.get(task.id)?.length)decisions.get(task.id)[0].settle({type:'deny'});}
@@ -87,21 +92,21 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) 
     const handle=runKiro({command:agent.command,args:agent.acpArgs || ['acp','--agent-engine','v3'],workspace,prompt,sessionId:oldTask?.sessionId,
       onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
       onDecision(decision){return queueDecision(task,decision);},
-      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();}});
+      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'codex') {
     const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,
       onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onUsage(usage){task.usage=usage;save();},
       onDecision(decision){return queueDecision(task,decision);},
-      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();}});
+      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'claude') {
     const handle = runClaude({prompt, workspace, sessionId:oldTask?.sessionId,
       onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text)task.output=(task.output+text+'\n').slice(-100000); } if(message.type==='result') { if(message.usage || message.total_cost_usd!==undefined) task.usage={provider:'claude',usage:message.usage,costUsd:message.total_cost_usd}; if(message.is_error) task.status='failed'; } changed(); },
       onDecision(decision,signal) { return queueDecision(task,decision,signal); },
-      onDone(error) { if(error) {task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); save(); }
+      onDone(error) { if(error) {task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); }
     }); task.process=handle; return task;
   }
   const child = spawn(agent.command, args, { cwd:workspace, shell:false, stdio:['pipe','pipe','pipe'] }); task.process = child;
@@ -110,7 +115,7 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) 
   child.stdout.on('data', chunk => { const str = chunk.toString(); append(str); pending += str; const lines = pending.split('\n'); pending = lines.pop(); for (const line of lines) { try { const event = JSON.parse(line); if (agent.id === 'codex' && event.type === 'thread.started' && /^[0-9a-f-]{36}$/i.test(event.thread_id || '')) task.sessionId = event.thread_id; if (agent.id === 'claude' && /^[0-9a-f-]{36}$/i.test(event.session_id || '')) task.sessionId = event.session_id; } catch {} } });
   child.stderr.on('data', append); child.stdin.on('error', () => {});
   child.on('error', err => { append(`\n${err.message}`); task.status = 'failed'; save(); });
-  child.on('close', code => { if (task.status !== 'stopped' && task.status !== 'failed') task.status = code === 0 ? 'completed' : 'failed'; delete task.process; save(); });
+  child.on('close', code => { if (task.status !== 'stopped' && task.status !== 'failed') task.status = code === 0 ? 'completed' : 'failed'; delete task.process; save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); });
   child.stdin.end(prompt.trim() + '\n');
   return task;
 }
@@ -129,7 +134,8 @@ const handler = async (req, res) => {
       if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); return json(res,200,{sessions:await (agent==='kiro'?listKiroSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command))}); }
       const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude|kiro)\/([a-z0-9_-]+)$/i);
       if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); return json(res,200,{session:await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command))}); }
-      if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt})=>({id,name,createdAt}))}); }
+      if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
+      if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
       if (req.method === 'GET' && url.pathname === '/api/changes') {
         const since=Number(url.searchParams.get('since')); if(!Number.isSafeInteger(since) || since<0) return json(res,400,{error:'Ungültige Revision.'});
@@ -139,6 +145,10 @@ const handler = async (req, res) => {
       }
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
+      if(url.pathname==='/api/push/subscription' || url.pathname==='/api/push/unsubscribe'){
+        const device=requestDevice(req);if(!device)return json(res,403,{error:'Nur gekoppelte Geräte können Push konfigurieren.'});
+        if(url.pathname==='/api/push/unsubscribe')await push.unsubscribe(device);else{const input=await body(req);await push.subscribe(device,input.subscription);}return json(res,200,{ok:true});
+      }
       const deviceMatch=url.pathname.match(/^\/api\/devices\/([a-f0-9-]+)\/(revoke|rename)$/);
       if(deviceMatch){if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const device=devices.get(deviceMatch[1]);if(!device)return json(res,404,{error:'Gerät nicht gefunden.'});if(deviceMatch[2]==='revoke')devices.delete(device.id);else{const input=await body(req);if(typeof input.name!=='string'||!input.name.trim()||input.name.length>80)return json(res,400,{error:'Bitte einen gültigen Namen angeben.'});device.name=input.name.trim();}await saveDevices();changed();return json(res,200,{ok:true});}
       if (url.pathname === '/api/tunnel/start') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); const input=await body(req);return json(res,200,tunnel.start(input.provider)); }
@@ -155,7 +165,7 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/pairing') {
         if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'});
         const input=await body(req); let base; try { base=new URL(input.url); } catch { return json(res,400,{error:'Bitte eine öffentliche HTTPS-Adresse angeben.'}); }
-        if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) return json(res,400,{error:'Bitte eine öffentliche HTTPS-Adresse ohne Zugangsdaten angeben.'});
+        if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash || base.pathname!=='/') return json(res,400,{error:'Bitte eine öffentliche HTTPS-Adresse ohne Pfad oder Zugangsdaten angeben.'});
         const code=randomBytes(24).toString('base64url'); pairings.clear(); pairings.set(code,Date.now()+5*60*1000);
         const link=new URL('/glass.html',base); link.hash=`pair=${code}`;
         const deepLink=`fb-viewapp://web_app_deep_link?appName=${encodeURIComponent('OpenGlassUI')}&appUrl=${encodeURIComponent(link.href)}`;
@@ -198,7 +208,7 @@ const handler = async (req, res) => {
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,400,{error:error.message}); }

@@ -5,6 +5,7 @@ import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
+import {createECDH,randomBytes} from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
 test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => {
@@ -30,6 +31,7 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   assert.equal((await fetch(gateway+'/api/tunnel')).status,401);
   const remoteHeaders={'X-Forwarded-For':'203.0.113.10'};
   assert.equal((await fetch(base+'/api/state',{headers:remoteHeaders})).status,401);
+  assert.equal((await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com/prefix'})})).status,400);
   const pairResponse=await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com'})});
   assert.equal(pairResponse.status,200); const pair=await pairResponse.json(); assert.match(pair.deepLink,/^fb-viewapp:/);
   const code=new URLSearchParams(new URL(pair.url).hash.slice(1)).get('pair');
@@ -38,6 +40,14 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   assert.equal((await fetch(base+'/api/state',{headers:{...remoteHeaders,Authorization:`Bearer ${token}`}})).status,200);
   assert.equal((await fetch(gateway+'/api/state',{headers:{Authorization:`Bearer ${token}`}})).status,200);
   assert.equal((await fetch(gateway+'/api/projects',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Origin:base},body:JSON.stringify({name:'Bad',path:dir})})).status,403);
+  assert.equal((await fetch(gateway+'/api/push/key')).status,401);
+  const pushKey=await fetch(gateway+'/api/push/key',{headers:{Authorization:`Bearer ${token}`}});assert.equal(pushKey.status,200);assert.ok((await pushKey.json()).publicKey);
+  const ecdh=createECDH('prime256v1');ecdh.generateKeys();const subscription={endpoint:'https://fcm.googleapis.com/fcm/send/fixture',keys:{p256dh:ecdh.getPublicKey().toString('base64url'),auth:randomBytes(16).toString('base64url')}};
+  const pushPost=(url,data)=>fetch(gateway+url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(data)});
+  assert.equal((await pushPost('/api/push/subscription',{subscription:{...subscription,endpoint:'https://127.0.0.1/private'}})).status,400);
+  assert.equal((await pushPost('/api/push/subscription',{subscription})).status,200);
+  const visibleDevices=await (await fetch(base+'/api/devices')).json();assert.equal(visibleDevices.devices[0].pushEnabled,true);assert.equal(JSON.stringify(visibleDevices).includes(subscription.endpoint),false);
+  assert.equal((await pushPost('/api/push/unsubscribe',{})).status,200);
   const invalidSocket=new WebSocket(`ws://127.0.0.1:${Number(port)+1}/api/events`);const invalidClosed=new Promise(resolve=>{invalidSocket.once('open',()=>invalidSocket.send('null'));invalidSocket.once('close',resolve);});assert.equal(await invalidClosed,1008);assert.equal((await fetch(base+'/api/state')).status,200);
   const socket=new WebSocket(`ws://127.0.0.1:${Number(port)+1}/api/events`);
   const initialEvent=new Promise((resolve,reject)=>{socket.once('open',()=>socket.send(JSON.stringify({token})));socket.once('message',data=>resolve(JSON.parse(data)));socket.once('error',reject);});
