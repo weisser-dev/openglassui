@@ -40,7 +40,7 @@ export function runClaude({prompt,workspace,sessionId,onMessage,onDecision,onDon
 }
 
 export function runCodex({prompt,workspace,sessionId,command='codex',onSession,onText,onDecision,onDone}) {
- const child=spawn(command,['app-server'],{stdio:['pipe','pipe','pipe']});
+ const child=spawn(command,['app-server','--enable','default_mode_request_user_input'],{stdio:['pipe','pipe','pipe']});
  const lines=createInterface({input:child.stdout});let seq=0,finished=false,threadId,turnId,stderr='';const pending=new Map();
  function finish(err){if(finished)return;finished=true;for(const p of pending.values())p.reject(err||new Error('Sitzung beendet.'));pending.clear();child.kill();onDone(err);}
  function send(value){if(!child.stdin.destroyed)child.stdin.write(JSON.stringify(value)+'\n');}

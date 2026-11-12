@@ -43,6 +43,10 @@ Die lokale Steuerzentrale ist unter [http://127.0.0.1:4173](http://127.0.0.1:417
 
 ## Entscheidungen auf der Brille
 
-Bei neuen Codex- und Claude-Aufgaben wird der Agent angewiesen, für inhaltliche Entscheidungen kurze Auswahlvorschläge aus dem bisherigen Kontext zu machen. Das hängt vom Agenten und Modell ab und ist keine Garantie, dass jede Frage als Auswahl erscheint. Native Auswahloptionen und eigene Texteingabe werden unterstützt; Mehrfachauswahl und mehrere gleichzeitig offene Rückfragen werden noch nicht vollständig unterstützt. Zusätzliche parallele Freigaben werden vorsichtshalber abgelehnt. Bei bestehenden Sitzungen wird das ursprüngliche Codex-Entwicklerinstruktionsfeld nicht überschrieben.
+Bei neuen Codex- und Claude-Aufgaben wird der Agent angewiesen, für inhaltliche Entscheidungen kurze Auswahlvorschläge aus dem bisherigen Kontext zu machen. Für Codex aktiviert OpenGlassUI dazu `default_mode_request_user_input`, eine experimentelle Codex-Funktion; sie kann sich bei einer anderen Codex-Version ändern. Ob eine Frage als Auswahl erscheint, hängt vom Agenten und Modell ab. Native Auswahloptionen und eigene Texteingabe werden unterstützt; Mehrfachauswahl und mehrere gleichzeitig offene Rückfragen werden noch nicht vollständig unterstützt. Zusätzliche parallele Freigaben werden vorsichtshalber abgelehnt. Bei bestehenden Sitzungen wird das ursprüngliche Codex-Entwicklerinstruktionsfeld nicht überschrieben.
 
 Bei Tool-Freigaben werden Toolname und verfügbare Details gezeigt. „Einmal erlauben“ gilt nur für die konkrete Anfrage; es wird keine dauerhafte Regel angelegt. Unbekannte Codex-Anfragetypen werden nicht automatisch bestätigt. Die tatsächliche Darstellung, Texteingabe und Navigation auf der Brille müssen noch auf dem Gerät getestet werden.
+
+## Selbsttest
+
+Ein lokaler End-to-End-Test bestätigte Codex-Aufgabe, Fortsetzung und die Auswahl einer echten Codex-Rückfrage. Claude konnte auf dem Testrechner wegen einer abgelaufenen OAuth-Anmeldung nicht ausgeführt werden; nach erneuter Anmeldung muss dieser Ablauf noch getestet werden. Brillenverbindung, Armband und WebMCP sind nicht auf echter Hardware geprüft.

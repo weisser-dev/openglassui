@@ -1,6 +1,6 @@
 window.decisionUI=function(task,post){
  const d=task.pendingDecision, box=document.createElement('section');box.className='decision';
- const heading=document.createElement('h3');heading.textContent=d.kind==='approval'?'Freigabe erforderlich':'Claude fragt';box.append(heading);
+ const heading=document.createElement('h3');heading.textContent=d.kind==='approval'?'Freigabe erforderlich':`${task.agentName} fragt`;box.append(heading);
  const context=document.createElement('p');context.textContent=`Aufgabe: ${task.prompt}`;box.append(context);
  if(d.kind==='approval'){
   const details=document.createElement('pre');details.textContent=`${d.toolName}\n${d.description||''}\n${JSON.stringify(d.input,null,2)}`;box.append(details);
