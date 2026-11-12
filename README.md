@@ -64,7 +64,7 @@ Start the companion:
 npm start
 ```
 
-Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The dashboard also contains a step-by-step glasses installation guide. Use **Bestehende Sitzungen** to browse up to 50 Codex or Claude sessions and the Kiro sessions returned for the selected workspace. Add more projects locally via **Projekt hinzufügen**; registered projects can then be selected on the glasses. Only continue sessions that are no longer active elsewhere; attaching safely to an externally running session is not supported. Open **Brillen-Simulator** for a keyboard-driven preview using live data.
+Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The dashboard also contains a step-by-step glasses installation guide. Use **Bestehende Sitzungen** to browse Codex, Claude or Kiro sessions returned for the selected workspace. Large session lists can take time to load. Add more projects locally via **Projekt hinzufügen**; registered projects can then be selected on the glasses. Only continue sessions that are no longer active elsewhere; attaching safely to an externally running session is not supported. Open **Brillen-Simulator** for a keyboard-driven preview using live data.
 
 ### Configuration details
 
@@ -87,7 +87,7 @@ Both the admin service and gateway bind to `127.0.0.1`, not the local network. T
 
 1. Enable the developer/web-app options required by Meta AI for your glasses.
 2. Start OpenGlassUI and leave it running on the computer.
-3. In a second terminal, create an HTTPS tunnel. For example, with cloudflared installed and the default port:
+3. In the dashboard, select an installed tunnel provider and click **Tunnel starten**. Alternatively, in a second terminal create an HTTPS tunnel, for example with cloudflared and the default port:
 
    ```sh
    cloudflared tunnel --url http://127.0.0.1:4174
