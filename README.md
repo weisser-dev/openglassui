@@ -1,5 +1,9 @@
 # OpenGlassUI
 
+[Try the interactive demo](https://weisser-dev.github.io/openglassui/) · [Installation](#local-setup) · [Architecture](docs/ARCHITECTURE.md)
+
+The public demo uses fictional data and runs entirely in the browser; it does not connect to agents or control a local machine.
+
 A local control center for coding agents, with an experimental web interface for Meta Ray-Ban Display glasses. OpenGlassUI runs a companion service on your computer: configure your workspace and agents there, then use the desktop dashboard or a paired glasses web app to follow tasks and respond to supported questions.
 
 > **Status: early prototype.** Local Codex task creation, continuation, and an interactive multiple-choice question have been exercised with a real Codex installation. Claude Code's real end-to-end flow, the Meta AI installation link, the wristband, and WebMCP have **not** been verified on physical glasses. Do not treat the current remote-access design as production-ready.
