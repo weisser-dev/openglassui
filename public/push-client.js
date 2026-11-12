@@ -1,5 +1,6 @@
 // Optional Web Push. The user must explicitly opt in on a paired device.
-function pushSupported(env=window){return Boolean(env.isSecureContext && env.Notification && env.PushManager && env.navigator?.serviceWorker);}
+function pushMissingCapabilities(env=window){const missing=[];if(!env.isSecureContext)missing.push('Secure HTTPS');if(!env.Notification)missing.push('Notifications API');if(!env.PushManager)missing.push('Push API');if(!env.navigator?.serviceWorker)missing.push('Service Worker');return missing;}
+function pushSupported(env=window){return pushMissingCapabilities(env).length===0;}
 async function enableBackgroundPush(api,env=window){
  if(!pushSupported(env))throw new Error('Background alerts are not supported by this browser.');
  const permission=await env.Notification.requestPermission();
@@ -27,5 +28,5 @@ async function backgroundPushStatus(api,env=window){
  const {enabled}=await api('/api/push/status');
  const supported=pushSupported(env);let subscribed=false;
  if(supported){const registration=await env.navigator.serviceWorker.getRegistration('/sw.js');subscribed=Boolean(await registration?.pushManager.getSubscription());}
- return {enabled,supported,subscribed,permission:env.Notification?.permission || 'unavailable'};
+ return {enabled,supported,subscribed,missing:pushMissingCapabilities(env),permission:env.Notification?.permission || 'unavailable'};
 }

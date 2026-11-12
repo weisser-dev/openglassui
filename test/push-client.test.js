@@ -11,7 +11,7 @@ test('background push is opt-in, subscribes only after consent and can be disabl
  await context.enableBackgroundPush(api,env);assert.deepEqual(calls.slice(0,3),['permission','/api/push/key','/api/push/subscription']);
  await context.disableBackgroundPush(api,env);assert.ok(unsubscribed);assert.equal(calls.at(-1),'/api/push/unsubscribe');
  env.Notification.requestPermission=async()=> 'denied';const before=calls.length;await assert.rejects(context.enableBackgroundPush(api,env),/not granted/);assert.equal(calls.length,before);
- assert.equal(context.pushSupported({}),false);
+ assert.equal(context.pushSupported({}),false);assert.deepEqual(Array.from(context.pushMissingCapabilities({isSecureContext:true,Notification:{},navigator:{serviceWorker:{}}})),['Push API']);
 });
 test('alert status combines device subscription with the paired server status',async()=>{
  const api=async()=>({enabled:true});
