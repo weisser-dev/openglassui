@@ -97,7 +97,7 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) 
   }
   if (agent.id === 'codex') {
     const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,
-      onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onUsage(usage){task.usage=usage;save();},
+      onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage=usage;save();},
       onDecision(decision){return queueDecision(task,decision);},
       onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;

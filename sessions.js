@@ -39,7 +39,7 @@ export function runClaude({prompt,workspace,sessionId,onMessage,onDecision,onDon
  return {kill(){abort.abort();process.close();}};
 }
 
-export function runCodex({prompt,workspace,sessionId,command='codex',onSession,onText,onUsage=()=>{},onDecision,onDone}) {
+export function runCodex({prompt,workspace,sessionId,command='codex',onSession,onText,onUsage=()=>{},onEvent=()=>{},onDecision,onDone}) {
  const child=spawn(command,['app-server','--enable','default_mode_request_user_input'],{stdio:['pipe','pipe','pipe']});
  const lines=createInterface({input:child.stdout});let seq=0,finished=false,threadId,turnId,stderr='';const pending=new Map();
  function finish(err){if(finished)return;finished=true;for(const p of pending.values())p.reject(err||new Error('Sitzung beendet.'));pending.clear();child.kill();onDone(err);}
@@ -54,6 +54,10 @@ export function runCodex({prompt,workspace,sessionId,command='codex',onSession,o
    if(!question&&!approval){send({id:msg.id,error:{code:-32601,message:'Nicht unterstützte Anfrage'}});return;}
    const decision={id:String(msg.id),kind:question?'question':'approval',toolName:msg.method,description:msg.params.reason||'',input:question?{questions:msg.params.questions}:msg.params};
    try{const answer=await onDecision(decision);if(question){const answers={};for(const q of msg.params.questions||[])answers[q.id]={answers:answer?.type==='answer'?[answer.answers[q.question]]:[]};send({id:msg.id,result:{answers}});}else send({id:msg.id,result:{decision:answer?.type==='allow'?'accept':'decline'}});}catch{send({id:msg.id,error:{code:-32603,message:'Entscheidung abgebrochen'}});}return;
+  }
+  if((msg.method==='item/started'||msg.method==='item/completed') && msg.params?.threadId===threadId){
+   const item=msg.params.item;const titles={commandExecution:'Befehl',fileChange:'Dateiänderung',mcpToolCall:'MCP-Werkzeug',dynamicToolCall:'Werkzeug',webSearch:'Websuche'};
+   if(item && typeof item.id==='string' && Object.hasOwn(titles,item.type))onEvent({id:item.id,title:titles[item.type],status:typeof item.status==='string'?item.status:(msg.method==='item/started'?'inProgress':'completed')});
   }
   if(msg.method==='thread/tokenUsage/updated')onUsage({provider:'codex',tokenUsage:msg.params.tokenUsage});
   if(msg.method==='item/agentMessage/delta')onText(msg.params.delta||'');
