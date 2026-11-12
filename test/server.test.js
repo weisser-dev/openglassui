@@ -15,6 +15,7 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
  const port=String(20000+Math.floor(Math.random()*20000));
  const base=`http://127.0.0.1:${port}`;
  await mkdir(path.join(dir,'second'));
+ await Promise.all(['third','fourth'].map(name=>mkdir(path.join(dir,name))));
  await writeFile(path.join(dir,'config.json'),JSON.stringify({workspace:dir,agents:[{id:'mock',name:'Test',command:process.execPath,args:['-e',"process.stdin.on('data', x => process.stdout.write('Antwort: '+x+' cwd:'+process.cwd()))"],input:'stdin'}]}));
  const server=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:port,OPENGLASS_CONFIG:path.join(dir,'config.json'),OPENGLASS_DATA_DIR:path.join(dir,'data')},stdio:'ignore'});
  try {
@@ -24,6 +25,7 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   let task; for(let i=0;i<50;i++){task=(await (await fetch(base+'/api/state')).json()).tasks[0];if(task.status!=='running')break;await delay(50);} assert.equal(task.status,'completed'); assert.match(task.output,/Antwort: Hallo/);
   const added=await fetch(base+'/api/projects',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({name:'Zweites Projekt',path:path.join(dir,'second')})});assert.equal(added.status,201);const project=await added.json();
   const state=await (await fetch(base+'/api/state')).json(); assert.equal(state.projects.find(p=>p.id===project.id).name,'Zweites Projekt');
+  const concurrent=await Promise.all(['third','fourth'].map(name=>fetch(base+'/api/projects',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({name,path:path.join(dir,name)})})));assert.deepEqual(concurrent.map(r=>r.status),[201,201]);const savedProjects=JSON.parse(await readFile(path.join(dir,'data','projects.json'),'utf8'));assert.deepEqual(savedProjects.map(p=>p.name).sort(),['Zweites Projekt','fourth','third']);
   const secondTask=await (await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',projectId:project.id,prompt:'Zweites Projekt'})})).json();
   let secondResult;for(let i=0;i<50;i++){secondResult=(await (await fetch(base+'/api/state')).json()).tasks.find(t=>t.id===secondTask.id);if(secondResult?.status!=='running')break;await delay(50);}assert.equal(secondResult.status,'completed');assert.match(secondResult.output,/cwd:.*second/);assert.equal(secondResult.projectId,project.id);
   const invalid=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',projectId:'unknown',prompt:'Hallo'})});assert.equal(invalid.status,400);

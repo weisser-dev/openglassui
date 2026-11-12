@@ -27,7 +27,8 @@ let savedProjects = [];
 try { savedProjects = JSON.parse(await readFile(projectsPath, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const projects = new Map([['default', {id:'default', name:path.basename(workspace) || workspace, path:workspace}], ...savedProjects.map(p => [p.id,p])]);
 function projectById(id = 'default') { const project=projects.get(id); if(!project) throw new Error('Projekt nicht gefunden.'); return project; }
-async function saveProjects() { const temporary=`${projectsPath}.tmp`; await writeFile(temporary,JSON.stringify([...projects.values()].filter(p=>p.id!=='default')), {mode:0o600}); await rename(temporary,projectsPath); }
+let projectsQueue=Promise.resolve();
+function saveProjects() {const snapshot=JSON.stringify([...projects.values()].filter(p=>p.id!=='default'));projectsQueue=projectsQueue.catch(()=>{}).then(async()=>{const temporary=`${projectsPath}.tmp`;await writeFile(temporary,snapshot,{mode:0o600});await rename(temporary,projectsPath);});return projectsQueue;}
 
 let stored = [];
 try { stored = JSON.parse(await readFile(storePath, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -234,4 +235,4 @@ server.listen(port,host,()=>console.log(`OpenGlassUI läuft lokal: http://${host
 gateway.listen(gatewayPort,host,()=>console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`));
 
 let shuttingDown=false;
-for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});

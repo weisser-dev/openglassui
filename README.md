@@ -144,4 +144,4 @@ For the Meta developer flow see [Meta setup](docs/META_SETUP.md). For device-neu
 
 ## License
 
-No license file has been selected for this repository yet.
+OpenGlassUI is available under the [MIT License](LICENSE).
