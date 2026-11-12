@@ -78,6 +78,15 @@ test('shutdown persists the stopped status of a running task',async()=>{
  }finally{if(server.exitCode===null)server.kill();await rm(dir,{recursive:true,force:true});}
 });
 
+test('restart marks running tasks interrupted and discards stale approvals',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'openglass-restart-'));const port=String(20000+Math.floor(Math.random()*20000));const base=`http://127.0.0.1:${port}`;
+ await mkdir(path.join(dir,'data'));await writeFile(path.join(dir,'config.json'),JSON.stringify({workspace:dir,agents:[]}));await writeFile(path.join(dir,'data','tasks.json'),JSON.stringify([{id:'12345678-1234-1234-1234-123456789abc',status:'running',pendingDecision:{id:'old',kind:'approval'},output:'Previously saved'}]));
+ const server=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:port,OPENGLASS_CONFIG:path.join(dir,'config.json'),OPENGLASS_DATA_DIR:path.join(dir,'data')},stdio:'ignore'});
+ try{let state;for(let i=0;i<50;i++){try{state=await (await fetch(base+'/api/state')).json();break;}catch{await delay(50);}}assert.ok(state);assert.equal(state.tasks[0].status,'interrupted');assert.equal(state.tasks[0].pendingDecision,undefined);assert.equal(state.tasks[0].output,'Previously saved');
+  const response=await fetch(base+'/api/tasks/12345678-1234-1234-1234-123456789abc/decision',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({decisionId:'old',type:'allow'})});assert.equal(response.status,409);
+ }finally{const exited=once(server,'exit');server.kill();await exited;await rm(dir,{recursive:true,force:true});}
+});
+
 test('a stopped Codex session cannot resume until its previous run settles',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'openglass-resume-'));const executable=path.join(dir,'codex');const port=String(20000+Math.floor(Math.random()*20000));const base=`http://127.0.0.1:${port}`;
  const script=`#!${process.execPath}

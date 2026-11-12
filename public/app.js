@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 let state, selected = null, rendered = '', observedTasks = null;
-const statusText = {running:'LÄUFT', completed:'FERTIG', failed:'FEHLGESCHLAGEN', stopped:'GESTOPPT'};
+const statusText = {running:'LÄUFT', completed:'FERTIG', failed:'FEHLGESCHLAGEN', stopped:'GESTOPPT', interrupted:'UNTERBROCHEN'};
 function el(tag, className, text) { const e = document.createElement(tag); if (className) e.className=className; if (text !== undefined) e.textContent=text; return e; }
 async function refresh(force = false) {
   try {
