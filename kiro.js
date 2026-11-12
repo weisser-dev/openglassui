@@ -47,14 +47,14 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
 async function kiroRead(command, workspace, action) {
  const child=spawn(command,['acp','--agent-engine','v3'],{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
  child.stderr.resume();
- const lines=createInterface({input:child.stdout});let seq=0;const pending=new Map(), replay=[];
+ const lines=createInterface({input:child.stdout});let seq=0,lastReplayType=null;const pending=new Map(), replay=[];
  function send(value){if(!child.stdin.destroyed)child.stdin.write(JSON.stringify({jsonrpc:'2.0',...value})+'\n');}
  function call(method,params){return new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});send({id,method,params});});}
  child.on('error',error=>{for(const item of pending.values())item.reject(error);pending.clear()});
  child.on('close',()=>{for(const item of pending.values())item.reject(new Error('Kiro-Verbindung beendet.'));pending.clear()});
  lines.on('line',line=>{let msg;try{msg=JSON.parse(line)}catch{return;}if(msg.id!==undefined&&!msg.method){const item=pending.get(msg.id);if(item){pending.delete(msg.id);msg.error?item.reject(new Error(msg.error.message)):item.resolve(msg.result);}return;}
   if(msg.id!==undefined&&msg.method){send({id:msg.id,error:{code:-32601,message:'Not supported in read-only session browser'}});return;}
-  if(msg.method==='session/update' && action && msg.params?.sessionId===action){const u=msg.params?.update;if(u?.sessionUpdate==='agent_message_chunk' || u?.sessionUpdate==='user_message_chunk'){if(typeof u.content?.text==='string')replay.push({type:u.sessionUpdate==='user_message_chunk'?'user':'assistant',message:{content:u.content.text}});}}
+  if(msg.method==='session/update' && action && msg.params?.sessionId===action){const u=msg.params?.update;if(u?.sessionUpdate==='agent_message_chunk' || u?.sessionUpdate==='user_message_chunk'){if(typeof u.content?.text==='string'){const type=u.sessionUpdate==='user_message_chunk'?'user':'assistant';if(type===lastReplayType)replay[replay.length-1].message.content+=u.content.text;else replay.push({type,message:{content:u.content.text}});lastReplayType=type;}}else if(u?.sessionUpdate==='tool_call' || u?.sessionUpdate==='tool_call_update')lastReplayType=null;}
  });
  const timer=setTimeout(()=>child.kill(),15000);
  try{const init=await call('initialize',{protocolVersion:1,clientCapabilities:{},clientInfo:{name:'openglassui',version:'0.1.0'}});if(!init.agentCapabilities?.sessionCapabilities?.list)throw new Error('Diese Kiro-Version unterstützt die Sitzungsliste nicht.');
