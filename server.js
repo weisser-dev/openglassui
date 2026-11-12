@@ -10,6 +10,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { listAgentSessions, readAgentSession, runClaude, runCodex, discoverAgentProjects, listGlobalSessions, listCodexModels } from './sessions.js';
 import { runKiro, listKiroSessions, readKiroSession, listAllKiroSessions, listOpenCodeSessions, readOpenCodeSession, listAllOpenCodeSessions } from './kiro.js';
 import { createTunnelManager } from './tunnel.js';
+import { createCloudflaredInstaller } from './tunnel-installer.js';
 import { createPushService } from './push.js';
 import { formatSession } from './session-format.js';
 import { readProjectRepository } from './project-metadata.js';
@@ -27,7 +28,7 @@ await mkdir(dataDir, { recursive:true, mode:0o700 });
 const storePath = path.join(dataDir, 'tasks.json');
 const projectsPath = path.join(dataDir, 'projects.json');
 const setupPath = path.join(dataDir, 'setup.json');
-let setupState={agent:'codex',agents:['codex'],projectId:'default',provider:'cloudflare',complete:false};
+let setupState={agent:'codex',agents:['codex'],projectId:'default',provider:'cloudflare',complete:false,autoStartTunnel:false};
 let setupSelectionSaved=false;
 try{const saved=JSON.parse(await readFile(setupPath,'utf8'));setupState={...setupState,...saved};setupSelectionSaved=Array.isArray(saved.agents)&&saved.agents.length>0;}catch(error){if(error.code!=='ENOENT')throw error;}
 let setupQueue=Promise.resolve();
@@ -56,7 +57,7 @@ let revision=0; const watchers=new Set(), sockets=new Set();
 function changed(){revision++;for(const notify of [...watchers])notify();for(const socket of [...sockets]){if(!socket.isLocal && !authorizedToken(socket.token)) {socket.close(1008,'Zugriff widerrufen');sockets.delete(socket);continue;}if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify({revision}));}}
 const port = Number(process.env.PORT || 4173), gatewayPort=Number(process.env.OPENGLASS_GATEWAY_PORT || port+1), host = '127.0.0.1';
 if(!Number.isInteger(port) || !Number.isInteger(gatewayPort) || port<1 || gatewayPort<1 || port>65535 || gatewayPort>65535 || port===gatewayPort) throw new Error('Ungültiger lokaler oder Gateway-Port.');
-const tunnel=createTunnelManager({port:gatewayPort});
+const tunnel=createTunnelManager({port:gatewayPort});const tunnelInstaller=createCloudflaredInstaller();
 const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png', '.json':'application/json; charset=utf-8' };
 function json(res, status, data) { res.writeHead(status, { 'Content-Type':'application/json', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer' }); res.end(JSON.stringify(data)); }
 function exposed(task) { const { process, ...data } = task; return data; }
@@ -151,6 +152,7 @@ const handler = async (req, res) => {
       if (req.method === 'GET' && url.pathname === '/api/push/status') { const device=requestDevice(req);if(!device)return json(res,403,{error:'Only paired devices can check background alerts.'});return json(res,200,{enabled:Boolean(device.push)}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
+      if (req.method === 'GET' && url.pathname === '/api/tunnel/install-status') {if(!isLocal)return json(res,403,{error:'Available locally only.'});return json(res,200,{...tunnelInstaller.status(),platform:process.platform,brewAvailable:await executableAvailable('brew'),installed:await executableAvailable('cloudflared')});}
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
       if (req.method === 'GET' && url.pathname === '/api/setup') {if(!isLocal)return json(res,403,{error:'Available locally only.'});const available=await Promise.all(agents.map(async agent=>({id:agent.id,name:agent.name,installed:await executableAvailable(agent.command)})));return json(res,200,{setup:setupState,agents:available,projects:[...projects.values()].map(({id,name,path})=>({id,name,path})),tunnel:tunnel.status()});}
       if (req.method === 'GET' && url.pathname === '/api/changes') {
@@ -161,13 +163,14 @@ const handler = async (req, res) => {
       }
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
-      if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req),selected=input.agents ?? [input.agent];if(!Array.isArray(selected)||!selected.length||new Set(selected).size!==selected.length||selected.some(id=>!agents.some(a=>a.id===id))||!selected.includes(input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale'].includes(input.provider)||typeof input.complete!=='boolean')return json(res,400,{error:'Invalid setup selection.'});setupState={agent:input.agent,agents:selected,projectId:input.projectId,provider:input.provider,complete:input.complete};await saveSetup();setupSelectionSaved=true;changed();return json(res,200,{setup:setupState});}
+      if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req),selected=input.agents ?? [input.agent];if(!Array.isArray(selected)||!selected.length||new Set(selected).size!==selected.length||selected.some(id=>!agents.some(a=>a.id===id))||!selected.includes(input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale'].includes(input.provider)||typeof input.complete!=='boolean'||(input.autoStartTunnel!==undefined&&typeof input.autoStartTunnel!=='boolean'))return json(res,400,{error:'Invalid setup selection.'});setupState={agent:input.agent,agents:selected,projectId:input.projectId,provider:input.provider,complete:input.complete,autoStartTunnel:input.autoStartTunnel??setupState.autoStartTunnel??false};await saveSetup();setupSelectionSaved=true;changed();return json(res,200,{setup:setupState});}
       if(url.pathname==='/api/push/subscription' || url.pathname==='/api/push/unsubscribe'){
         const device=requestDevice(req);if(!device)return json(res,403,{error:'Nur gekoppelte Geräte können Push konfigurieren.'});
         if(url.pathname==='/api/push/unsubscribe')await push.unsubscribe(device);else{const input=await body(req);await push.subscribe(device,input.subscription);}return json(res,200,{ok:true});
       }
       const deviceMatch=url.pathname.match(/^\/api\/devices\/([a-f0-9-]+)\/(revoke|rename)$/);
       if(deviceMatch){if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const device=devices.get(deviceMatch[1]);if(!device)return json(res,404,{error:'Gerät nicht gefunden.'});if(deviceMatch[2]==='revoke')devices.delete(device.id);else{const input=await body(req);if(typeof input.name!=='string'||!input.name.trim()||input.name.length>80)return json(res,400,{error:'Bitte einen gültigen Namen angeben.'});device.name=input.name.trim();}await saveDevices();changed();return json(res,200,{ok:true});}
+      if (url.pathname === '/api/tunnel/install-cloudflared') {if(!isLocal)return json(res,403,{error:'Available locally only.'});await body(req);if(!await executableAvailable('brew'))return json(res,400,{error:'Homebrew is not available in PATH. Install it first or use the provider instructions.'});if(await executableAvailable('cloudflared'))return json(res,200,{status:'completed',error:null});return json(res,200,tunnelInstaller.start());}
       if (url.pathname === '/api/tunnel/start') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); const input=await body(req);return json(res,200,tunnel.start(input.provider)); }
       if (url.pathname === '/api/tunnel/stop') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,tunnel.stop()); }
       if (url.pathname === '/api/sessions/discover') {
@@ -259,7 +262,7 @@ for(const listener of [server,gateway])listener.on('upgrade',(req,socket,head)=>
 });
 const heartbeat=setInterval(()=>{for(const ws of sockets)if(ws.readyState===WebSocket.OPEN)ws.ping();},30000);heartbeat.unref();
 server.listen(port,host,()=>console.log(`OpenGlassUI läuft lokal: http://${host}:${port}\nProjekt: ${workspace}`));
-gateway.listen(gatewayPort,host,()=>console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`));
+gateway.listen(gatewayPort,host,()=>{console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`);if(setupState.complete&&setupState.autoStartTunnel===true){try{tunnel.start(setupState.provider);}catch(error){console.error('Automatic tunnel start failed:',error.message);}}});
 
 let shuttingDown=false;
 for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue,setupQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});

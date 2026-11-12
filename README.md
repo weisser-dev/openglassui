@@ -1,6 +1,6 @@
 # OpenGlassUI
 
-[Try the interactive demo](https://weisser-dev.github.io/openglassui/) · [Documentation](https://weisser-dev.github.io/openglassui/docs.html) · [Installation](#local-setup) · [Architecture](docs/ARCHITECTURE.md)
+[Try the interactive demo](https://weisser-dev.github.io/openglassui/) · [Documentation](https://weisser-dev.github.io/openglassui/docs.html) · [Privacy](https://weisser-dev.github.io/openglassui/privacy.html) · [Installation](#local-setup) · [Architecture](docs/ARCHITECTURE.md)
 
 The public demo uses fictional data and runs entirely in the browser; it does not connect to agents or control a local machine. It is not the installable glasses app: generate the app's QR code in your local companion setup instead.
 
@@ -75,7 +75,7 @@ npm start
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The dashboard also contains a step-by-step glasses installation guide. Use **Bestehende Sitzungen** to browse Codex, Claude or Kiro sessions returned for the selected workspace. Large session lists can take time to load. Add more projects locally via **Projekt hinzufügen**; registered projects can then be selected on the glasses. Only continue sessions that are no longer active elsewhere; attaching safely to an externally running session is not supported. Open **Brillen-Simulator** for a keyboard-driven preview using live data.
 
-The setup has five main steps. You can select multiple agents, review and import selected discovered projects for each agent, start an installed tunnel or enter an HTTPS address, generate a pairing QR code, and check for a paired device. The wizard saves non-secret selections locally in `.openglass/setup.json`; provider authentication is handled separately. If Tailscale requires Serve activation, the setup provides its authorization link and resumes once approved; HTTPS may also need to be enabled. A detected pairing does not establish that the glasses display or wristband works. The setup supports English and partial German translations; the rest of the interface has not yet been fully migrated to internationalization.
+The setup has five main steps. You can select multiple agents, review and import selected discovered projects for each agent, start an installed tunnel or enter an HTTPS address, optionally install cloudflared with Homebrew on macOS or opt in to starting the selected tunnel on companion startup, generate a pairing QR code, and check for a paired device. The wizard saves non-secret selections locally in `.openglass/setup.json`; provider authentication is handled separately. If Tailscale requires Serve activation, the setup provides its authorization link and resumes once approved; HTTPS may also need to be enabled. A detected pairing does not establish that the glasses display or wristband works. The setup supports English and partial German translations; the rest of the interface has not yet been fully migrated to internationalization.
 
 In **Bestehende Sitzungen**, select an agent and choose **Alle Sitzungen suchen** to discover its locally available sessions across projects. Results are visible only on the local dashboard. Choosing a result registers its project if necessary and opens the session; registered projects become available to paired devices. Sessions without a known, accessible local working directory are excluded. Providers can differ in which historical sessions they expose; continuing a session still requires the agent's own authentication and support.
 
@@ -93,6 +93,8 @@ Optional environment variables:
 | `OPENGLASS_GATEWAY_PORT` | Loopback gateway port to forward through the tunnel | `PORT + 1` (normally `4174`) |
 | `OPENGLASS_CONFIG` | Path to a JSON configuration file | `config.json` in the project directory |
 | `OPENGLASS_DATA_DIR` | Directory for local task data | `.openglass/` in the project directory |
+
+The tunnel provider and optional automatic-start preference are stored in local setup. Automatic startup is off by default and starts only after completed setup when explicitly enabled. Cloudflare Quick Tunnel addresses change when restarted; update or re-pair the glasses app as needed. The Homebrew button is available only on macOS when Homebrew is in the companion’s PATH.
 
 Both the admin service and gateway bind to `127.0.0.1`, not the local network. Tasks and their output are written to `.openglass/tasks.json` by default, including prompts and potentially sensitive agent output. Data is not encrypted at rest. Running tasks are marked interrupted after a server restart.
 
@@ -129,7 +131,7 @@ The gateway also serves Meta's `/.well-known/meta-wearables-manifest.json` and a
 
 ## Security and privacy
 
-**This is an experimental single-user prototype, not a hardened remote-access service.**
+**This is an experimental single-user prototype, not a hardened remote-access service.** The OpenGlassUI companion contains no built-in analytics or telemetry sent to an OpenGlassUI-operated service. Connected agents, model providers, device software, tunnel services, optional push providers, and package hosts can communicate externally under their own policies.
 
 - The companion binds to localhost. Remote access depends on a correctly configured HTTPS reverse proxy. The companion separates the admin listener from a paired-device gateway. Forward only the gateway port through a tunnel; never publish the admin port. A malicious local process can still access the admin listener, and this design is not a formal security audit.
 - A pairing QR contains a short-lived secret. Anyone who redeems it can read accessible tasks and sessions and launch configured agents with the permissions of the local user. Treat the QR and installation link like a password; do not share screenshots or logs containing them.

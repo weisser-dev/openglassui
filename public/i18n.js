@@ -21,6 +21,19 @@
   'Pairing confirmed by the companion. Test the glasses display and wristband next.':'Kopplung vom Begleiter bestätigt. Teste jetzt Brillendisplay und Armband.',
   'No new paired device found. Check the connection and scan the QR code again if it expired.':'Kein neu gekoppeltes Gerät gefunden. Prüfe die Verbindung und scanne bei Ablauf den QR-Code erneut.',
   'Generate a pairing QR code first.':'Erzeuge zuerst einen Kopplungs-QR-Code.','Open the app on the device and check pairing before completing setup.':'Öffne die App auf dem Gerät und prüfe die Kopplung, bevor du die Einrichtung abschließt.',
+  'Start this connection automatically when OpenGlassUI starts':'Diese Verbindung beim Start von OpenGlassUI automatisch starten',
+  'Public providers expose the gateway whenever OpenGlassUI starts. Quick Tunnel addresses change on restart; reinstall or re-pair with the new address when needed.':'Öffentliche Anbieter stellen das Gateway bei jedem Start bereit. Quick-Tunnel-Adressen ändern sich beim Neustart; aktualisiere oder kopple die App bei Bedarf erneut.',
+  'Install cloudflared with Homebrew':'cloudflared mit Homebrew installieren',
+  'Cloudflare Quick Tunnel':'Cloudflare Quick Tunnel','Public HTTPS for testing. No Cloudflare account required; the address changes on restart.':'Öffentliches HTTPS zum Testen. Kein Cloudflare-Konto nötig; die Adresse ändert sich beim Neustart.',
+  'Install cloudflared, then start the connection below. On macOS: brew install cloudflared.':'Installiere cloudflared und starte anschließend die Verbindung. Unter macOS: brew install cloudflared.',
+  'Cloudflare installation instructions ↗':'Cloudflare-Installationsanleitung ↗',
+  'Public HTTPS. An ngrok account and configured auth token are required.':'Öffentliches HTTPS. Ein ngrok-Konto und ein eingerichtetes Auth-Token sind erforderlich.',
+  'Install ngrok, sign in, and configure your auth token as described by ngrok. On macOS: brew install ngrok.':'Installiere ngrok, melde dich an und richte das Auth-Token nach der ngrok-Anleitung ein. Unter macOS: brew install ngrok.',
+  'ngrok setup instructions ↗':'ngrok-Einrichtungsanleitung ↗',
+  'Private tailnet connection. Tailscale must be installed and connected; HTTPS and Serve must be enabled.':'Private Tailnet-Verbindung. Tailscale muss installiert und verbunden sein; HTTPS und Serve müssen aktiviert sein.',
+  'Install Tailscale on the companion and phone, sign in, and enable Serve if prompted. Phone access does not guarantee the glasses can reach the tailnet.':'Installiere Tailscale auf Begleiter und Smartphone, melde dich an und aktiviere Serve bei Aufforderung. Smartphone-Zugriff garantiert keinen Zugriff von der Brille.',
+  'Tailscale installation instructions ↗':'Tailscale-Installationsanleitung ↗',
+  'Checking cloudflared…':'cloudflared wird geprüft…','Installing cloudflared with Homebrew…':'cloudflared wird mit Homebrew installiert…','cloudflared is not installed.':'cloudflared ist nicht installiert.','✓ cloudflared is installed.':'✓ cloudflared ist installiert.','Installation is still running. Check back shortly.':'Die Installation läuft noch. Bitte später erneut prüfen.',
   'Continue':'Weiter','Open dashboard':'Zum Dashboard','Back':'Zurück','STEP':'SCHRITT','OF':'VON'
  };
  const get=()=>localStorage.getItem('openglass-language') || 'en';

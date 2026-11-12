@@ -22,3 +22,9 @@
 .signal-center{width:260px;height:auto;border:0;border-radius:0;background:transparent;box-shadow:none}.signal-center img{display:block;width:100%;height:auto;filter:drop-shadow(0 12px 30px #8ff44322)}
 
 .demo-controls button span{color:#bdd0b8;font-size:.8em;font-weight:400}.demo-controls button{white-space:normal;text-align:left}[data-theme=light] .demo-controls button span{color:#4c6850}
+.chip-four{top:275px;right:9%}
+@media(max-width:760px){
+ .nav{height:auto;min-height:68px;flex-wrap:wrap;gap:12px;padding-top:14px;padding-bottom:14px}.nav .brand{flex:1 1 auto;min-width:0}.nav nav{width:100%;justify-content:flex-start;flex-wrap:wrap;gap:12px 18px}.nav nav a{white-space:nowrap}.nav .theme-picker{margin-right:auto}
+ .hero,.demo-section,.how,.cta{min-width:0}.hero h1{font-size:clamp(44px,11vw,70px);overflow-wrap:anywhere}.signal{min-width:0}.signal-center{width:min(64vw,230px)}.orbit.two{width:min(82vw,270px);height:min(82vw,270px)}.chip-four{top:auto;bottom:18px;right:5%}.chip-three{bottom:18px;left:5%}
+ .demo-grid{min-width:0}.demo-info{padding:24px}.device{min-width:0;margin:0 10px 16px}.device-bar{padding:12px}.demo-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px}.demo-controls-label{grid-column:1/-1}.demo-controls button{min-width:0;text-align:center;padding:10px 4px;font-size:12px}.device-foot{padding:0 10px 12px;line-height:1.5}
+}
