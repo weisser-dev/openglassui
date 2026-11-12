@@ -1,5 +1,6 @@
 import http from 'node:http';
-import { readFile, realpath, mkdir, writeFile, rename } from 'node:fs/promises';
+import { readFile, realpath, mkdir, writeFile, rename, access } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import path from 'node:path';
@@ -23,6 +24,12 @@ const dataDir = path.resolve(process.env.OPENGLASS_DATA_DIR || path.join(root, '
 await mkdir(dataDir, { recursive:true, mode:0o700 });
 const storePath = path.join(dataDir, 'tasks.json');
 const projectsPath = path.join(dataDir, 'projects.json');
+const setupPath = path.join(dataDir, 'setup.json');
+let setupState={agent:'codex',projectId:'default',provider:'tailscale',complete:false};
+try{const saved=JSON.parse(await readFile(setupPath,'utf8'));setupState={...setupState,...saved};}catch(error){if(error.code!=='ENOENT')throw error;}
+let setupQueue=Promise.resolve();
+function saveSetup(){const snapshot=JSON.stringify(setupState);setupQueue=setupQueue.catch(()=>{}).then(async()=>{const temp=`${setupPath}.tmp`;await writeFile(temp,snapshot,{mode:0o600});await rename(temp,setupPath);});return setupQueue;}
+async function executableAvailable(command){if(typeof command!=='string'||!command)return false;const dirs=path.isAbsolute(command)?['']:(process.env.PATH||'').split(path.delimiter);const extensions=process.platform==='win32'?(process.env.PATHEXT||'.EXE;.CMD;.BAT').split(';'):[''];for(const dir of dirs)for(const ext of extensions){try{await access(path.isAbsolute(command)?command:path.join(dir,command+ext),fsConstants.X_OK);return true;}catch{}}return false;}
 let savedProjects = [];
 try { savedProjects = JSON.parse(await readFile(projectsPath, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const projects = new Map([['default', {id:'default', name:path.basename(workspace) || workspace, path:workspace}], ...savedProjects.map(p => [p.id,p])]);
@@ -140,6 +147,7 @@ const handler = async (req, res) => {
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
+      if (req.method === 'GET' && url.pathname === '/api/setup') {if(!isLocal)return json(res,403,{error:'Available locally only.'});const available=await Promise.all(agents.map(async agent=>({id:agent.id,name:agent.name,installed:await executableAvailable(agent.command)})));return json(res,200,{setup:setupState,agents:available,projects:[...projects.values()].map(({id,name})=>({id,name})),tunnel:tunnel.status()});}
       if (req.method === 'GET' && url.pathname === '/api/changes') {
         const since=Number(url.searchParams.get('since')); if(!Number.isSafeInteger(since) || since<0) return json(res,400,{error:'Ungültige Revision.'});
         if(since!==revision) return json(res,200,{revision});
@@ -148,6 +156,7 @@ const handler = async (req, res) => {
       }
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
+      if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req);if(!agents.some(a=>a.id===input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale'].includes(input.provider)||typeof input.complete!=='boolean')return json(res,400,{error:'Invalid setup selection.'});setupState={agent:input.agent,projectId:input.projectId,provider:input.provider,complete:input.complete};await saveSetup();return json(res,200,{setup:setupState});}
       if(url.pathname==='/api/push/subscription' || url.pathname==='/api/push/unsubscribe'){
         const device=requestDevice(req);if(!device)return json(res,403,{error:'Nur gekoppelte Geräte können Push konfigurieren.'});
         if(url.pathname==='/api/push/unsubscribe')await push.unsubscribe(device);else{const input=await body(req);await push.subscribe(device,input.subscription);}return json(res,200,{ok:true});
@@ -225,7 +234,7 @@ const handler = async (req, res) => {
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js','favicon.svg','setup.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','sw.js','favicon.svg','setup.js','i18n.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,error.status || 400,{error:error.message}); }
@@ -248,4 +257,4 @@ server.listen(port,host,()=>console.log(`OpenGlassUI läuft lokal: http://${host
 gateway.listen(gatewayPort,host,()=>console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`));
 
 let shuttingDown=false;
-for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue,setupQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});
