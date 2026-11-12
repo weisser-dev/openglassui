@@ -5,11 +5,11 @@ OpenGlassUI separates agent execution from device-specific presentation. The com
 ```mermaid
 flowchart LR
   subgraph Local[User-controlled computer or server]
-    Dashboard[Local dashboard\nprojects and devices]
-    Admin[Admin service\n127.0.0.1:4173]
-    Gateway[Paired-device gateway\n127.0.0.1:4174]
+    Dashboard["Local dashboard<br/>projects and devices"]
+    Admin["Admin service<br/>127.0.0.1:4173"]
+    Gateway["Paired-device gateway<br/>127.0.0.1:4174"]
     Core[Tasks, decisions, usage, events]
-    Projects[Local project registry\nand task data]
+    Projects["Local project registry<br/>and task data"]
     Codex[Codex app-server]
     Claude[Claude Agent SDK]
     Kiro[Kiro ACP]
@@ -20,14 +20,14 @@ flowchart LR
     Core --> Projects
     Core --> Codex & Claude & Kiro & Generic
   end
-  Tunnel[HTTPS tunnel\nCloudflare or ngrok] --> Gateway
+  Tunnel["HTTPS tunnel<br/>Cloudflare or ngrok"] --> Gateway
   subgraph Meta[Meta device path]
-    Phone[iPhone + Meta AI\nadds web app]
-    Glass[Meta display web app\ncontrols and WebMCP]
+    Phone["iPhone + Meta AI<br/>adds web app"]
+    Glass["Meta display web app<br/>controls and WebMCP"]
     Phone -. adds app .-> Glass
   end
   Glass --> Tunnel
-  Future[Future device adapter\ne.g. Rokid SDK] -. design only .-> Tunnel
+  Future["Future device adapter<br/>e.g. Rokid SDK"] -. design only .-> Tunnel
   Simulator[Browser simulator] --> Admin
 ```
 

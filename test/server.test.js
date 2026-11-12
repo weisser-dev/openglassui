@@ -38,6 +38,7 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   assert.equal((await fetch(base+'/api/state',{headers:{...remoteHeaders,Authorization:`Bearer ${token}`}})).status,200);
   assert.equal((await fetch(gateway+'/api/state',{headers:{Authorization:`Bearer ${token}`}})).status,200);
   assert.equal((await fetch(gateway+'/api/projects',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Origin:base},body:JSON.stringify({name:'Bad',path:dir})})).status,403);
+  const invalidSocket=new WebSocket(`ws://127.0.0.1:${Number(port)+1}/api/events`);const invalidClosed=new Promise(resolve=>{invalidSocket.once('open',()=>invalidSocket.send('null'));invalidSocket.once('close',resolve);});assert.equal(await invalidClosed,1008);assert.equal((await fetch(base+'/api/state')).status,200);
   const socket=new WebSocket(`ws://127.0.0.1:${Number(port)+1}/api/events`);
   const initialEvent=new Promise((resolve,reject)=>{socket.once('open',()=>socket.send(JSON.stringify({token})));socket.once('message',data=>resolve(JSON.parse(data)));socket.once('error',reject);});
   assert.ok(Number.isSafeInteger((await initialEvent).revision));

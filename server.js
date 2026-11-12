@@ -188,6 +188,7 @@ for(const listener of [server,gateway])listener.on('upgrade',(req,socket,head)=>
     ws.isLocal=local(req) && localOrigin(req);let authenticated=false;const deadline=setTimeout(()=>ws.close(1008,'Authentifizierung erforderlich'),5000);
     ws.on('error',()=>{});ws.on('close',()=>{clearTimeout(deadline);sockets.delete(ws);});
     ws.on('message',raw=>{if(authenticated)return;let data;try{data=JSON.parse(raw.toString())}catch{ws.close(1008,'Ungültige Anmeldung');return;}
+      if(!data || typeof data!=='object' || Array.isArray(data)){ws.close(1008,'Ungültige Anmeldung');return;}
       if(!ws.isLocal && !authorizedToken(data.token)){ws.close(1008,'Zugriff verweigert');return;}authenticated=true;ws.token=data.token;clearTimeout(deadline);sockets.add(ws);ws.send(JSON.stringify({revision}));
     });
   });

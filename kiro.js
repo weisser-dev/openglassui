@@ -6,12 +6,13 @@ import { randomUUID } from 'node:crypto';
 // is automatically retried after an interrupted transport.
 export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'], workspace, prompt, sessionId, onSession, onText, onUsage, onDecision, onDone}) {
  const child=spawn(command,args,{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
- const lines=createInterface({input:child.stdout}); const pending=new Map(); let sequence=0, activeSession=sessionId, replaying=Boolean(sessionId), finished=false, stderr='';
+ const lines=createInterface({input:child.stdout}); const pending=new Map(); let sequence=0, activeSession=sessionId, replaying=Boolean(sessionId), finished=false;
  const send=payload=>{ if(!child.stdin.destroyed) child.stdin.write(JSON.stringify({jsonrpc:'2.0',...payload})+'\n'); };
  const call=(method,params)=>new Promise((resolve,reject)=>{const id=++sequence;pending.set(id,{resolve,reject});send({id,method,params});});
  function finish(error){if(finished)return;finished=true;for(const {reject} of pending.values())reject(error||new Error('Verbindung beendet'));pending.clear();child.kill();onDone(error);}
- child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-2000)});
- child.on('error',finish);child.on('close',code=>{if(!finished)finish(new Error(`Kiro-Verbindung beendet (${code}). ${stderr}`));});
+ // Drain diagnostic output without persisting potentially sensitive URLs or credentials.
+ child.stderr.on('data',()=>{});
+ child.on('error',finish);child.on('close',code=>{if(!finished)finish(new Error(`Kiro-Verbindung beendet (${code}). Bitte Kiro-Anmeldung und CLI-Konfiguration prüfen.`));});
  lines.on('line',async line=>{let message;try{message=JSON.parse(line)}catch{return;}
   if(message.id!==undefined && !message.method){const wait=pending.get(message.id);if(wait){pending.delete(message.id);message.error?wait.reject(new Error(message.error.message)):wait.resolve(message.result);}return;}
   if(message.id!==undefined && message.method){
