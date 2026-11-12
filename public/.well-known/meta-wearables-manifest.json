@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "OpenGlassUI",
+  "description": "A wearable control center for coding agents.",
+  "appearance": {
+    "theme_color": "#b8f36e",
+    "icon": {
+      "src": "../icons/app-icon.svg",
+      "type": "monochrome"
+    },
+    "icon_background": {
+      "colors": ["#294c25", "#112017"],
+      "stops": [0, 1]
+    }
+  }
+}

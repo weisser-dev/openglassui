@@ -110,6 +110,8 @@ Both the admin service and gateway bind to `127.0.0.1`, not the local network. T
 
 The glasses page organizes agents, projects and chats into navigable screens, with a conversation view and settings. It uses authenticated WebSocket revision events with long-poll fallback and implements geometry-based directional navigation and Select. Text fields use the host's standard text composer; Meta documents handwriting and voice composition on supported glasses. Camera attachments are not implemented. In settings, a paired device can optionally subscribe to standard Web Push after the wearer grants browser permission. The implementation has mock-based tests, but Web Push availability and delivery on Meta glasses have not been established. Meta documents that WebMCP tools are available only while the web app is in the foreground, with a 10-second call deadline. It also registers experimental WebMCP tools when `document.modelContext` is available. The complete navigation, text composition and gestures need a real-device test. See [Meta's web-app input guidance](https://github.com/meta/meta-wearables-webapp/blob/main/plugins/meta-wearables-webapp/skills/ai-glasses-webapp-device/SKILL.md).
 
+The gateway also serves Meta's `/.well-known/meta-wearables-manifest.json` and a monochrome glasses icon for the launcher. An existing installation may need to be removed and added again to refresh its icon; actual launcher rendering has not yet been verified on hardware. See Meta's [app icon utility](https://github.com/meta/meta-ray-ban-display-ui-toolkit-web/tree/main/examples/app-icon-generator).
+
 ## Security and privacy
 
 **This is an experimental single-user prototype, not a hardened remote-access service.**
