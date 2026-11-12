@@ -8,7 +8,7 @@
 .answer-bubble{position:relative;padding:13px 48px 13px 16px}.answer-bubble .chat-output{max-height:240px}.answer-listen{position:absolute;top:7px;right:7px;width:30px;height:30px;border-radius:50%;background-color:#263b24;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23d1dfc9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5 6 9H3v6h3l5 4zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:center;opacity:0;pointer-events:none}.answer-bubble:focus-within .answer-listen{opacity:1}
 
 /* The entire answer, including its speaker, shares one rounded focus ring. */
-.answer-bubble:focus-within{outline:3px solid #c4ff77;outline-offset:3px}.answer-bubble .chat-output:focus-visible{outline:none}
+.answer-bubble:focus-within{outline:none;box-shadow:inset 0 0 0 2px #c4ff77}.answer-bubble .chat-output:focus-visible{outline:none}
 .typing-indicator{display:flex;align-items:center;gap:5px;min-height:20px}.chat-output:not(:empty)+.typing-indicator{margin-top:8px}.typing-indicator span{width:6px;height:6px;border-radius:50%;background:#c9e8b8;animation:typing-pulse 1.2s infinite ease-in-out}.typing-indicator span:nth-child(2){animation-delay:.2s}.typing-indicator span:nth-child(3){animation-delay:.4s}@keyframes typing-pulse{0%,60%,100%{opacity:.3}30%{opacity:1}}@media (prefers-reduced-motion:reduce){.typing-indicator span{animation:none;opacity:.8}}
 
 .composer-send:disabled{background:#283127;border-color:#465345;color:#899487;cursor:not-allowed;opacity:.7}
