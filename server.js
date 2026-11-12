@@ -186,7 +186,7 @@ const handler = async (req, res) => {
       }
       const decisionMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/decision$/);
       if (decisionMatch) {
-        const task=tasks.get(decisionMatch[1]), resolve=decisions.get(decisionMatch[1])?.[0]?.settle; const input=await body(req); const pending=task?.pendingDecision;
+        const input=await body(req);const task=tasks.get(decisionMatch[1]), resolve=decisions.get(decisionMatch[1])?.[0]?.settle, pending=task?.pendingDecision;
         if (!resolve || !pending || input.decisionId!==pending.id) return json(res,409,{error:'Entscheidung nicht mehr offen.'});
         if (pending.kind==='kiro_permission' && input.type==='choice') { const option=pending.input.options.find(o=>o.optionId===input.optionId); if(!option) return json(res,400,{error:'Ungültige Auswahl.'}); resolve({optionId:option.optionId}); return json(res,200,{ok:true}); }
         if (pending.kind==='approval' && ['allow','deny'].includes(input.type)) {resolve({type:input.type}); return json(res,200,{ok:true});}

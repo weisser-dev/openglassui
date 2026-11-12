@@ -7,6 +7,7 @@ import { once } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
+import http from 'node:http';
 
 test('paired device receives a Kiro decision, resolves it once and sees usage and completion',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'og-flow-'));
@@ -39,12 +40,13 @@ readline.createInterface({input:process.stdin}).on('line',line=>{const msg=JSON.
   assert.equal(task.pendingDecision.kind,'kiro_permission');assert.equal(task.usage.context.usagePercentage,42);assert.equal(task.events.length,1);assert.equal(task.events[0].title,'Inspect project');assert.equal(task.events[0].status,'completed');
   assert.deepEqual(task.pendingDecision.input.options.map(o=>o.optionId),['once','reject']);
   const denied=await remote(`/api/tasks/${id}/decision`,{decisionId:task.pendingDecision.id,type:'choice',optionId:'always'});assert.equal(denied.status,400);
+  let slow;const slowResult=new Promise((resolve,reject)=>{slow=http.request(`${gateway}/api/tasks/${id}/decision`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});slow.on('error',reject);slow.write('{"decisionId":"');});await delay(50);
   const chosen=await remote(`/api/tasks/${id}/decision`,{decisionId:task.pendingDecision.id,type:'choice',optionId:'once'});assert.equal(chosen.status,200);
   const firstId=task.pendingDecision.id;
   for(let i=0;i<100;i++){task=(await (await fetch(gateway+'/api/state',{headers:{Authorization:`Bearer ${token}`}})).json()).tasks.find(t=>t.id===id);if(task.pendingDecision && task.pendingDecision.id!==firstId)break;await delay(25);}
   assert.equal(task.pendingDecision.input.toolCall.title,'Second check');
   assert.equal((await remote(`/api/tasks/${id}/decision`,{decisionId:firstId,type:'choice',optionId:'once'})).status,409);
-  assert.equal((await remote(`/api/tasks/${id}/decision`,{decisionId:task.pendingDecision.id,type:'choice',optionId:'reject2'})).status,200);
+  slow.end(task.pendingDecision.id+'","type":"choice","optionId":"reject2"}');assert.equal(await slowResult,200);
   for(let i=0;i<100;i++){task=(await (await fetch(gateway+'/api/state',{headers:{Authorization:`Bearer ${token}`}})).json()).tasks.find(t=>t.id===id);if(task.status!=='running')break;await delay(25);}
   assert.equal(task.status,'completed');assert.match(task.output,/Result: once,reject2/);assert.ok(revisions>=2,'the paired device should receive change events');
   const repeated=await remote(`/api/tasks/${id}/decision`,{decisionId:'stale',type:'choice',optionId:'once'});assert.equal(repeated.status,409);
