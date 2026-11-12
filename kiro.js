@@ -4,9 +4,10 @@ import { randomUUID } from 'node:crypto';
 
 // Kiro ACP uses newline-delimited JSON-RPC. One process owns one turn; no prompt
 // is automatically retried after an interrupted transport.
-export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'], workspace, prompt, sessionId, onSession, onText, onUsage, onEvent=()=>{}, onDecision, onDone, agentName='Kiro'}) {
+export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'], workspace, prompt, sessionId, onSession, onText, onUsage, onEvent=()=>{}, onDecision, onDone, agentName='Kiro',model,onModels=()=>{}}) {
  const child=spawn(command,args,{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
- const lines=createInterface({input:child.stdout}); const pending=new Map(); let sequence=0, activeSession=sessionId, replaying=Boolean(sessionId), finished=false;
+ const lines=createInterface({input:child.stdout}); const pending=new Map(); let sequence=0, activeSession=sessionId, replaying=Boolean(sessionId), finished=false, modelOption=null;
+ function updateModels(options){const option=Array.isArray(options)?options.find(item=>item?.type==='select'&&(item.category==='model'||item.id==='model')):null;if(!option)return;const choices=(option.options||[]).flatMap(item=>Array.isArray(item.options)?item.options:[item]).filter(item=>typeof item?.value==='string'&&typeof item?.name==='string').map(item=>({id:item.value,name:item.name}));modelOption={id:option.id,current:option.currentValue,models:choices};onModels(modelOption);}
  const send=payload=>{ if(!child.stdin.destroyed) child.stdin.write(JSON.stringify({jsonrpc:'2.0',...payload})+'\n'); };
  const call=(method,params)=>new Promise((resolve,reject)=>{const id=++sequence;pending.set(id,{resolve,reject});send({id,method,params});});
  function finish(error){if(finished)return;finished=true;for(const {reject} of pending.values())reject(error||new Error('Verbindung beendet'));pending.clear();child.kill();onDone(error);}
@@ -29,14 +30,15 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
    const update=params.update || {}; const type=update.sessionUpdate || update.type;
    if(!replaying && ['agent_message_chunk','AgentMessageChunk'].includes(type)){const text=update.content?.text;if(typeof text==='string')onText(text);}
    if(!replaying && ['tool_call','tool_call_update','ToolCall','ToolCallUpdate'].includes(type) && typeof update.toolCallId==='string'){onEvent({id:update.toolCallId,title:typeof update.title==='string'?update.title:undefined,status:typeof update.status==='string'?update.status:undefined});}
-   const meta=update._meta?.kiro; if(meta?.kind==='context_usage' || meta?.kind==='turn_completion')onUsage(meta);
+   if(type==='config_option_update')updateModels(update.configOptions);const meta=update._meta?.kiro; if(meta?.kind==='context_usage' || meta?.kind==='turn_completion')onUsage(meta);
   }
  });
  (async()=>{try{
    const initialized=await call('initialize',{protocolVersion:1,clientCapabilities:{},clientInfo:{name:'openglassui',version:'0.1.0'}});
    if(sessionId && !initialized.agentCapabilities?.loadSession)throw new Error(`${agentName} does not support resuming over ACP.`);
    const opened=await call(sessionId?'session/load':'session/new',{...(sessionId?{sessionId}:{}),cwd:workspace,mcpServers:[]});
-   replaying=false;activeSession=sessionId || opened.sessionId; if(!activeSession)throw new Error(`${agentName} did not return a session ID.`);onSession(activeSession);
+   replaying=false;activeSession=sessionId || opened.sessionId; if(!activeSession)throw new Error(`${agentName} did not return a session ID.`);onSession(activeSession);updateModels(opened.configOptions);
+   if(model){if(!modelOption?.models.some(item=>item.id===model))throw new Error('The selected model is not currently advertised by this agent.');const changed=await call('session/set_config_option',{sessionId:activeSession,configId:modelOption.id,value:model});updateModels(changed.configOptions);if(modelOption?.current!==model)throw new Error('The agent did not confirm the selected model.');}
    const result=await call('session/prompt',{sessionId:activeSession,prompt:[{type:'text',text:prompt}]});
    if(result?.stopReason && !['end_turn','EndTurn'].includes(result.stopReason))throw new Error(`${agentName}: ${result.stopReason}`);
    finish(null);
@@ -44,8 +46,8 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
  return {kill(){if(activeSession)send({method:'session/cancel',params:{sessionId:activeSession}});finish(new Error('Gestoppt.'));}};
 }
 
-async function kiroRead(command, workspace, action, all=false, agent='kiro') {
- const args=agent==='opencode'?['acp']:['acp','--agent-engine','v3'];
+async function kiroRead(command, workspace, action, all=false, agent='kiro', argsOverride) {
+ const args=argsOverride || (agent==='opencode'?['acp']:['acp','--agent-engine','v3']);
  const child=spawn(command,args,{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
  child.stderr.resume();
  const lines=createInterface({input:child.stdout});let seq=0,lastReplayType=null;const pending=new Map(), replay=[];
@@ -67,7 +69,7 @@ async function kiroRead(command, workspace, action, all=false, agent='kiro') {
    cursor=list.nextCursor;
    if(cursor!=null){if(typeof cursor!=='string' || cursors.has(cursor) || cursors.size>=1000)throw new Error('Kiro hat eine ungültige Seitennavigation zurückgegeben.');cursors.add(cursor);}
   } while(cursor!=null);
-  if(!action)return sessions.map(s=>({id:s.sessionId,agent,title:s.title || (agent==='opencode'?'OpenCode session':'Kiro-Sitzung'),updatedAt:s.updatedAt,...(all?{cwd:s.cwd}:{})}));
+  if(!action)return sessions.map(s=>({id:s.sessionId,agent,title:s.title || (agent==='kiro'?'Kiro session':'Agent session'),updatedAt:s.updatedAt,...(all?{cwd:s.cwd}:{})}));
   if(!sessions.some(s=>s.sessionId===action))throw new Error('Sitzung nicht im konfigurierten Projekt gefunden.');
   if(!init.agentCapabilities.loadSession)throw new Error('Diese Kiro-Version unterstützt das Öffnen nicht.');
   await call('session/load',{sessionId:action,cwd:workspace,mcpServers:[]});return replay;
@@ -80,3 +82,6 @@ export const listAllKiroSessions=(workspace,command='kiro-cli')=>kiroRead(comman
 export const listOpenCodeSessions=(workspace,command='opencode')=>kiroRead(command,workspace,undefined,false,'opencode');
 export const readOpenCodeSession=(workspace,id,command='opencode')=>kiroRead(command,workspace,id,false,'opencode');
 export const listAllOpenCodeSessions=(workspace,command='opencode')=>kiroRead(command,workspace,undefined,true,'opencode');
+
+export const listGenericAcpSessions=(agent,workspace,all=false)=>kiroRead(agent.command,workspace,undefined,all,agent.id,agent.args);
+export const readGenericAcpSession=(agent,workspace,id)=>kiroRead(agent.command,workspace,id,false,agent.id,agent.args);

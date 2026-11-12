@@ -34,6 +34,7 @@
   'Install Tailscale on the companion and phone, sign in, and enable Serve if prompted. Phone access does not guarantee the glasses can reach the tailnet.':'Installiere Tailscale auf Begleiter und Smartphone, melde dich an und aktiviere Serve bei Aufforderung. Smartphone-Zugriff garantiert keinen Zugriff von der Brille.',
   'Tailscale installation instructions ↗':'Tailscale-Installationsanleitung ↗',
   'Checking cloudflared…':'cloudflared wird geprüft…','Installing cloudflared with Homebrew…':'cloudflared wird mit Homebrew installiert…','cloudflared is not installed.':'cloudflared ist nicht installiert.','✓ cloudflared is installed.':'✓ cloudflared ist installiert.','Installation is still running. Check back shortly.':'Die Installation läuft noch. Bitte später erneut prüfen.',
+  'Add an ACP-compatible agent':'ACP-kompatiblen Agenten hinzufügen','Use the installed agent executable and a JSON array of arguments. Do not put API keys in arguments.':'Gib das installierte Agentenprogramm und ein JSON-Array mit Argumenten an. Keine API-Schlüssel in Argumenten speichern.','Agent name':'Agentenname','Executable, e.g. agent':'Programm, z. B. agent','Executable':'Programm','Arguments as JSON array':'Argumente als JSON-Array','Add ACP agent':'ACP-Agent hinzufügen',
   'Continue':'Weiter','Open dashboard':'Zum Dashboard','Back':'Zurück','STEP':'SCHRITT','OF':'VON'
  };
  const get=()=>localStorage.getItem('openglass-language') || 'en';

@@ -10,6 +10,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { listAgentSessions, readAgentSession, runClaude, runCodex, discoverAgentProjects, listGlobalSessions, listCodexModels } from './sessions.js';
 import { runKiro, listKiroSessions, readKiroSession, listAllKiroSessions, listOpenCodeSessions, readOpenCodeSession, listAllOpenCodeSessions } from './kiro.js';
 import { createTunnelManager } from './tunnel.js';
+import { createAcpClient } from './agent-client.js';
 import { createCloudflaredInstaller } from './tunnel-installer.js';
 import { createPushService } from './push.js';
 import { formatSession } from './session-format.js';
@@ -25,6 +26,10 @@ const workspace = await realpath(path.resolve(path.dirname(configPath), config.w
 const agents = config.agents || [];
 const dataDir = path.resolve(process.env.OPENGLASS_DATA_DIR || path.join(root, '.openglass'));
 await mkdir(dataDir, { recursive:true, mode:0o700 });
+const customAgentsPath=path.join(dataDir,'acp-agents.json');let customAgents=[];try{customAgents=JSON.parse(await readFile(customAgentsPath,'utf8'));if(!Array.isArray(customAgents))throw new Error('Invalid ACP agent list.');}catch(error){if(error.code!=='ENOENT')throw error;}
+for(const entry of customAgents)if(entry?.type==='acp'&&!agents.some(agent=>agent.id===entry.id))agents.push(entry);
+const isGenericAcp=agent=>agent?.type==='acp'&&!['kiro','opencode','codex','claude'].includes(agent.id);
+let customAgentsQueue=Promise.resolve();function addCustomAgent(entry){customAgentsQueue=customAgentsQueue.catch(()=>{}).then(async()=>{const next=[...customAgents,entry],tmp=customAgentsPath+'.tmp';await writeFile(tmp,JSON.stringify(next),{mode:0o600});await rename(tmp,customAgentsPath);customAgents=next;agents.push(entry);changed();});return customAgentsQueue;}
 const storePath = path.join(dataDir, 'tasks.json');
 const projectsPath = path.join(dataDir, 'projects.json');
 const setupPath = path.join(dataDir, 'setup.json');
@@ -97,14 +102,14 @@ function updateTaskEvent(task,event){
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
 function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), model) {
   const workspace = project.path;
-  const args = oldTask && !['kiro','opencode'].includes(agent.id) ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
-  if (!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string') throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
+  const args = oldTask && !['kiro','opencode'].includes(agent.id) && !isGenericAcp(agent) ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
+  if ((!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string')) throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
   const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
   startConversationTurn(task,prompt.trim());task.status = 'running'; task.lastMessageAt=new Date().toISOString(); task.trackedMessages=(task.trackedMessages || 0)+1; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
   tasks.set(task.id, task); save();
-  if (['kiro','opencode'].includes(agent.id)) {
-    const handle=runKiro({command:agent.command,args:agent.acpArgs || (agent.id==='opencode'?['acp']:['acp','--agent-engine','v3']),agentName:agent.name,workspace,prompt,sessionId:oldTask?.sessionId,
-      onSession(id){task.sessionId=id;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
+  if (['kiro','opencode'].includes(agent.id) || isGenericAcp(agent)) {
+    const launch=isGenericAcp(agent)?options=>createAcpClient(agent).run(options):runKiro;const handle=launch({command:agent.command,args:agent.acpArgs || (isGenericAcp(agent)?agent.args:agent.id==='opencode'?['acp']:['acp','--agent-engine','v3']),agentName:agent.name,workspace,prompt,model,sessionId:oldTask?.sessionId,
+      onModels(option){task.models=option.models;if(typeof option.current==='string')task.model=option.current;save();},onSession(id){task.sessionId=id;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
       onDecision(decision){return queueDecision(task,decision);},
       onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
@@ -145,16 +150,16 @@ const handler = async (req, res) => {
     }
     if (url.pathname.startsWith('/api/')) {
       if (!isLocal && !authorized(req)) return json(res,401,{error:'Bitte zuerst koppeln.'});
-      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro','opencode'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); const sessions=await (agent==='kiro'?listKiroSessions(project.path,cfg.command):agent==='opencode'?listOpenCodeSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{sessions}); }
-      const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude|kiro|opencode)\/([a-z0-9_-]+)$/i);
-      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):sessionMatch[1]==='opencode'?readOpenCodeSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
-      if (req.method === 'GET' && url.pathname === '/api/models') {const agent=agents.find(a=>a.id===url.searchParams.get('agent'));if(agent?.id==='claude'){const task=tasks.get(url.searchParams.get('task'));return json(res,200,{models:task?.agentId==='claude'?task.models||[]:[],supported:Boolean(task?.agentId==='claude'&&task.models?.length)});}if(!agent || agent.id!=='codex')return json(res,200,{models:[],supported:false});const models=await listCodexModels(agent.command);assertCurrentAccess(req);return json(res,200,{models,supported:true});}
+      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || (!['claude','codex','kiro','opencode'].includes(agent)&&!isGenericAcp(cfg))) return json(res,400,{error:'Agent nicht unterstützt.'}); const sessions=await (isGenericAcp(cfg)?createAcpClient(cfg).listSessions(project.path):agent==='kiro'?listKiroSessions(project.path,cfg.command):agent==='opencode'?listOpenCodeSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{sessions}); }
+      const sessionMatch=url.pathname.match(/^\/api\/sessions\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/i);
+      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg || (!['codex','claude','kiro','opencode'].includes(cfg.id)&&!isGenericAcp(cfg)))return json(res,404,{error:'Agent not configured or does not support session browsing.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (isGenericAcp(cfg)?createAcpClient(cfg).readSession(project.path,sessionMatch[2]):sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):sessionMatch[1]==='opencode'?readOpenCodeSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
+      if (req.method === 'GET' && url.pathname === '/api/models') {const agent=agents.find(a=>a.id===url.searchParams.get('agent'));if(agent&&(agent.id==='claude'||['kiro','opencode'].includes(agent.id)||isGenericAcp(agent))){const task=tasks.get(url.searchParams.get('task'));return json(res,200,{models:task?.agentId===agent.id?task.models||[]:[],supported:Boolean(task?.agentId===agent.id&&task.models?.length)});}if(!agent || agent.id!=='codex')return json(res,200,{models:[],supported:false});const models=await listCodexModels(agent.command);assertCurrentAccess(req);return json(res,200,{models,supported:true});}
       if (req.method === 'GET' && url.pathname === '/api/push/status') { const device=requestDevice(req);if(!device)return json(res,403,{error:'Only paired devices can check background alerts.'});return json(res,200,{enabled:Boolean(device.push)}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel/install-status') {if(!isLocal)return json(res,403,{error:'Available locally only.'});return json(res,200,{...tunnelInstaller.status(),platform:process.platform,brewAvailable:await executableAvailable('brew'),installed:await executableAvailable('cloudflared')});}
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
-      if (req.method === 'GET' && url.pathname === '/api/setup') {if(!isLocal)return json(res,403,{error:'Available locally only.'});const available=await Promise.all(agents.map(async agent=>({id:agent.id,name:agent.name,installed:await executableAvailable(agent.command)})));return json(res,200,{setup:setupState,agents:available,projects:[...projects.values()].map(({id,name,path})=>({id,name,path})),tunnel:tunnel.status()});}
+      if (req.method === 'GET' && url.pathname === '/api/setup') {if(!isLocal)return json(res,403,{error:'Available locally only.'});const available=await Promise.all(agents.map(async agent=>({id:agent.id,name:agent.name,type:agent.type||'agent',installed:await executableAvailable(agent.command)})));return json(res,200,{setup:setupState,agents:available,projects:[...projects.values()].map(({id,name,path})=>({id,name,path})),tunnel:tunnel.status()});}
       if (req.method === 'GET' && url.pathname === '/api/changes') {
         const since=Number(url.searchParams.get('since')); if(!Number.isSafeInteger(since) || since<0) return json(res,400,{error:'Ungültige Revision.'});
         if(since!==revision) return json(res,200,{revision});
@@ -173,10 +178,15 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/tunnel/install-cloudflared') {if(!isLocal)return json(res,403,{error:'Available locally only.'});await body(req);if(!await executableAvailable('brew'))return json(res,400,{error:'Homebrew is not available in PATH. Install it first or use the provider instructions.'});if(await executableAvailable('cloudflared'))return json(res,200,{status:'completed',error:null});return json(res,200,tunnelInstaller.start());}
       if (url.pathname === '/api/tunnel/start') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); const input=await body(req);return json(res,200,tunnel.start(input.provider)); }
       if (url.pathname === '/api/tunnel/stop') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,tunnel.stop()); }
+      if(url.pathname==='/api/agents/acp'){
+        if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req);
+        if(typeof input.name!=='string'||!input.name.trim()||input.name.length>80||typeof input.command!=='string'||!input.command.trim()||input.command.length>500||!Array.isArray(input.args)||input.args.length>30||!input.args.every(arg=>typeof arg==='string'&&arg.length<=500))return json(res,400,{error:'Enter a valid name, executable and argument array.'});
+        const entry={id:'acp-'+randomUUID(),name:input.name.trim(),type:'acp',command:input.command.trim(),args:input.args,input:'stdin'};await addCustomAgent(entry);return json(res,201,{id:entry.id,name:entry.name,type:entry.type});
+      }
       if (url.pathname === '/api/sessions/discover') {
         if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const input=await body(req),cfg=agents.find(a=>a.id===input.agent);
-        if(!cfg || !['codex','claude','kiro','opencode'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const sessions=await (input.agent==='kiro'?listAllKiroSessions(workspace,cfg.command):input.agent==='opencode'?listAllOpenCodeSessions(workspace,cfg.command):listGlobalSessions(input.agent,cfg.command));const visible=[],repositoryCache=new Map();
+        if(!cfg || (!['codex','claude','kiro','opencode'].includes(input.agent)&&!isGenericAcp(cfg)))return json(res,400,{error:'Agent nicht unterstützt.'});
+        const sessions=await (isGenericAcp(cfg)?createAcpClient(cfg).discoverSessions(workspace):input.agent==='kiro'?listAllKiroSessions(workspace,cfg.command):input.agent==='opencode'?listAllOpenCodeSessions(workspace,cfg.command):listGlobalSessions(input.agent,cfg.command));const visible=[],repositoryCache=new Map();
         for(const session of sessions){try{if(typeof session.cwd!=='string'||!path.isAbsolute(session.cwd))continue;const cwd=await realpath(session.cwd);const stat=await import('node:fs/promises').then(fs=>fs.stat(cwd));if(!stat.isDirectory())continue;if(!repositoryCache.has(cwd))repositoryCache.set(cwd,await readProjectRepository(cwd));visible.push({...session,cwd,repository:repositoryCache.get(cwd),projectId:[...projects.values()].find(p=>p.path===cwd)?.id || null});}catch{}}
         return json(res,200,{sessions:visible});
       }
@@ -206,8 +216,8 @@ const handler = async (req, res) => {
       }
       if (url.pathname === '/api/revoke') { if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'}); devices.clear(); pairings.clear(); await saveDevices(); changed(); return json(res,200,{ok:true}); }
       if (url.pathname === '/api/sessions/open') {
-        const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || !['codex','claude','kiro','opencode'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const project=projectById(input.projectId || 'default'); const data=await (input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):input.agent==='opencode'?readOpenCodeSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);
+        const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || (!['codex','claude','kiro','opencode'].includes(input.agent)&&!isGenericAcp(cfg)))return json(res,400,{error:'Agent nicht unterstützt.'});
+        const project=projectById(input.projectId || 'default'); const data=await (isGenericAcp(cfg)?createAcpClient(cfg).readSession(project.path,input.id):input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):input.agent==='opencode'?readOpenCodeSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);
         const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:formatSession(data,input.agent),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
         tasks.set(task.id,task);save();return json(res,201,exposed(task));
       }
@@ -235,8 +245,8 @@ const handler = async (req, res) => {
         if (match[2] === 'stop') { if (task.status !== 'running' || !task.process) return json(res,409,{error:'Aufgabe läuft nicht.'}); task.status='stopped'; cancelDecisions(task); task.process.kill('SIGTERM'); save(); return json(res,200,exposed(task)); }
         const input=await body(req), agent=agents.find(a=>a.id===task.agentId);
         if (task.process) return json(res,409,{error:'Der vorherige Agent wird noch beendet. Bitte gleich erneut versuchen.'});
-        if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || ['kiro','opencode'].includes(agent?.id)) || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
-        if(input.model!==undefined&&(!['codex','claude'].includes(agent.id)||typeof input.model!=='string'||!/^[-a-zA-Z0-9_.:]{1,120}$/.test(input.model)))return json(res,400,{error:'Invalid or unsupported model.'});return json(res,200,exposed(run(agent,input.prompt,task,undefined,input.model)));
+        if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || ['kiro','opencode'].includes(agent?.id) || isGenericAcp(agent)) || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
+        if(input.model!==undefined){const validId=typeof input.model==='string'&&input.model.length>0&&input.model.length<=200;const knownAcp=(['kiro','opencode'].includes(agent.id)||isGenericAcp(agent))&&task.models?.some(item=>item.id===input.model);if(!validId||(!['codex','claude'].includes(agent.id)&&!knownAcp))return json(res,400,{error:'Invalid or unsupported model.'});}return json(res,200,exposed(run(agent,input.prompt,task,undefined,input.model)));
       }
       return json(res,404,{error:'Nicht gefunden.'});
     }
