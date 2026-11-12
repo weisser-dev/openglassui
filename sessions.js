@@ -13,11 +13,15 @@ async function codexRequest(method, params, command='codex') {
  child.on('close',()=>{for(const p of pending.values())p.reject(new Error(`Codex app-server beendet. ${stderr}`));pending.clear()});
  const call=(name,p)=>new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});child.stdin.write(JSON.stringify({id:n,method:name,params:p})+'\n');});
  const timeout=setTimeout(()=>child.kill(),15000);
- try {await call('initialize',{clientInfo:{name:'openglassui',title:'OpenGlassUI',version:'0.1.0'},capabilities:{}});child.stdin.write(JSON.stringify({method:'initialized',params:{}})+'\n');return await call(method,params);}
+ try {await call('initialize',{clientInfo:{name:'openglassui',title:'OpenGlassUI',version:'0.1.0'},capabilities:{}});child.stdin.write(JSON.stringify({method:'initialized',params:{}})+'\n');
+  if(method!=='thread/list')return await call(method,params);
+  const data=[],ids=new Set(),cursors=new Set();let cursor;
+  do{const page=await call(method,{...params,...(cursor!==undefined?{cursor}:{})});if(!Array.isArray(page?.data))throw new Error('Codex hat eine ungültige Sitzungsliste zurückgegeben.');for(const item of page.data){if(item && typeof item.id==='string' && !ids.has(item.id)){ids.add(item.id);data.push(item);}}cursor=page.nextCursor;if(cursor!=null){if(typeof cursor!=='string'||cursors.has(cursor)||cursors.size>=1000)throw new Error('Codex hat eine ungültige Seitennavigation zurückgegeben.');cursors.add(cursor);}}while(cursor!=null);
+  return {data};}
  finally {clearTimeout(timeout);child.kill();}
 }
 export async function listAgentSessions(agent, workspace, command='codex') {
- if(agent==='claude') return (await listSessions({dir:workspace,limit:50,includeWorktrees:false})).filter(s=>!s.cwd || s.cwd===workspace).map(s=>({id:s.sessionId,agent,title:s.customTitle||s.summary||s.firstPrompt||'Claude-Sitzung',updatedAt:s.lastModified}));
+ if(agent==='claude') return (await listSessions({dir:workspace,includeWorktrees:false})).filter(s=>!s.cwd || s.cwd===workspace).map(s=>({id:s.sessionId,agent,title:s.customTitle||s.summary||s.firstPrompt||'Claude-Sitzung',updatedAt:s.lastModified}));
  if(agent==='codex') {const result=await codexRequest('thread/list',{cwd:workspace,limit:50,sortKey:'updated_at'},command);return result.data.map(s=>({id:s.id,agent,title:s.name||s.preview||'Codex-Sitzung',updatedAt:s.updatedAt}));}
  throw new Error('Nicht unterstützter Agent.');
 }
