@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile, rm, mkdir, chmod } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir, chmod, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
@@ -21,7 +21,7 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
  try {
   let ready=false; for(let i=0;i<50;i++){try{await fetch(base+'/api/state');ready=true;break;}catch{await delay(50);}} assert.ok(ready);
   const setupLogo=await fetch(base+'/setup-glasses.png');assert.equal(setupLogo.status,200);assert.equal(setupLogo.headers.get('content-type'),'image/png');
-  const setup=await (await fetch(base+'/api/setup')).json();assert.equal(setup.setup.complete,false);assert.equal(setup.agents[0].installed,true);
+  const setup=await (await fetch(base+'/api/setup')).json();assert.equal(setup.setup.complete,false);assert.equal(setup.agents[0].installed,true);assert.equal(setup.projects[0].path,await realpath(dir));
   const savedSetup=await fetch(base+'/api/setup',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agent:'mock',agents:['mock','mock2'],projectId:'default',provider:'tailscale',complete:true,token:'must-not-persist'})});assert.equal(savedSetup.status,200);const setupFile=await readFile(path.join(dir,'data','setup.json'),'utf8');assert.equal(JSON.parse(setupFile).provider,'tailscale');assert.deepEqual(JSON.parse(setupFile).agents,['mock','mock2']);assert.doesNotMatch(setupFile,/must-not-persist/);
   assert.equal((await fetch(`http://127.0.0.1:${Number(port)+1}/api/setup`)).status,401);
   const bad=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://example.com'},body:JSON.stringify({agentId:'mock',prompt:'Hallo'})}); assert.equal(bad.status,403);
@@ -30,6 +30,7 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   const added=await fetch(base+'/api/projects',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({name:'Zweites Projekt',path:path.join(dir,'second')})});assert.equal(added.status,201);const project=await added.json();
   const state=await (await fetch(base+'/api/state')).json(); assert.equal(state.projects.find(p=>p.id===project.id).name,'Zweites Projekt');
   const concurrent=await Promise.all(['third','fourth'].map(name=>fetch(base+'/api/projects',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({name,path:path.join(dir,name)})})));assert.deepEqual(concurrent.map(r=>r.status),[201,201]);const savedProjects=JSON.parse(await readFile(path.join(dir,'data','projects.json'),'utf8'));assert.deepEqual(savedProjects.map(p=>p.name).sort(),['Zweites Projekt','fourth','third']);
+  const managed=savedProjects.find(p=>p.name==='third');const projectAction=(action,data)=>fetch(base+`/api/projects/${managed.id}/${action}`,{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify(data)});assert.equal((await projectAction('rename',{name:'Renamed project'})).status,200);assert.equal((await (await fetch(base+'/api/setup')).json()).projects.find(p=>p.id===managed.id).name,'Renamed project');assert.equal((await projectAction('remove',{})).status,200);assert.equal((await (await fetch(base+'/api/setup')).json()).projects.some(p=>p.id===managed.id),false);assert.equal((await (await import('node:fs/promises')).stat(path.join(dir,'third'))).isDirectory(),true);
   const secondTask=await (await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',projectId:project.id,prompt:'Zweites Projekt'})})).json();
   let secondResult;for(let i=0;i<50;i++){secondResult=(await (await fetch(base+'/api/state')).json()).tasks.find(t=>t.id===secondTask.id);if(secondResult?.status!=='running')break;await delay(50);}assert.equal(secondResult.status,'completed');assert.match(secondResult.output,/cwd:.*second/);assert.equal(secondResult.projectId,project.id);
   const invalid=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',projectId:'unknown',prompt:'Hallo'})});assert.equal(invalid.status,400);
