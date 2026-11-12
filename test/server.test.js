@@ -7,6 +7,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import {createECDH,randomBytes} from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { once } from 'node:events';
 
 test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => {
  const dir=await mkdtemp(path.join(os.tmpdir(),'openglass-test-'));
@@ -65,4 +66,14 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   await fetch(base+'/api/revoke',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:'{}'});
   assert.equal((await fetch(base+'/api/state',{headers:{...remoteHeaders,Authorization:`Bearer ${token2}`}})).status,401);
  } finally {server.kill(); await rm(dir,{recursive:true,force:true});}
+});
+
+test('shutdown persists the stopped status of a running task',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'openglass-shutdown-'));const port=String(20000+Math.floor(Math.random()*20000));const base=`http://127.0.0.1:${port}`;
+ await writeFile(path.join(dir,'config.json'),JSON.stringify({workspace:dir,agents:[{id:'mock',name:'Test',command:process.execPath,args:['-e','setInterval(()=>{},1000)'],input:'stdin'}]}));
+ const server=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:port,OPENGLASS_CONFIG:path.join(dir,'config.json'),OPENGLASS_DATA_DIR:path.join(dir,'data')},stdio:'ignore'});
+ try{let ready=false;for(let i=0;i<50;i++){try{await fetch(base+'/api/state');ready=true;break;}catch{await delay(50);}}assert.ok(ready);
+  const response=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',prompt:'Test'})});assert.equal(response.status,201);const task=await response.json();assert.equal(task.status,'running');
+  const exited=once(server,'exit');server.kill('SIGTERM');const [code]=await exited;assert.equal(code,0);const saved=JSON.parse(await readFile(path.join(dir,'data','tasks.json'),'utf8'));assert.equal(saved.find(t=>t.id===task.id).status,'stopped');
+ }finally{if(server.exitCode===null)server.kill();await rm(dir,{recursive:true,force:true});}
 });
