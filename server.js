@@ -13,7 +13,7 @@ import { createTunnelManager } from './tunnel.js';
 import { createPushService } from './push.js';
 import { formatSession } from './session-format.js';
 import { readProjectRepository } from './project-metadata.js';
-import { startConversationTurn, appendAssistantText } from './conversation.js';
+import { startConversationTurn, appendAssistantText, appendTranscriptText } from './conversation.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.resolve(process.env.OPENGLASS_CONFIG || path.join(root, 'config.json'));
@@ -105,26 +105,26 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), 
     const handle=runKiro({command:agent.command,args:agent.acpArgs || (agent.id==='opencode'?['acp']:['acp','--agent-engine','v3']),agentName:agent.name,workspace,prompt,sessionId:oldTask?.sessionId,
       onSession(id){task.sessionId=id;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
       onDecision(decision){return queueDecision(task,decision);},
-      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
+      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'codex') {
     const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,model,
       onSession(id,actualModel){task.sessionId=id;if(actualModel)task.model=actualModel;save();},onModel(actualModel){task.model=actualModel;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage=usage;save();},
       onDecision(decision){return queueDecision(task,decision);},
-      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
+      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'claude') {
     const handle = runClaude({prompt, workspace, sessionId:oldTask?.sessionId,
       onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='system'&&message.subtype==='init'&&message.model)task.model=message.model; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text){task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text+'\n');task.output=(task.output+text+'\n').slice(-100000);} } if(message.type==='result') { if(message.usage || message.total_cost_usd!==undefined) task.usage={provider:'claude',usage:message.usage,costUsd:message.total_cost_usd}; if(message.is_error) task.status='failed'; } changed(); },
       onDecision(decision,signal) { return queueDecision(task,decision,signal); },
-      onDone(error) { if(error) {task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); }
+      onDone(error) { if(error) {appendTranscriptText(task,error.message);task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); }
     }); task.process=handle; return task;
   }
   const child = spawn(agent.command, args, { cwd:workspace, shell:false, stdio:['pipe','pipe','pipe'] }); task.process = child;
   let pending = '';
-  const append = chunk => { if(chunk.length)task.lastMessageAt=new Date().toISOString();task.output = (task.output + chunk.toString()).slice(-100000); changed(); };
+  const append = chunk => { if(chunk.length)task.lastMessageAt=new Date().toISOString();const text=chunk.toString();appendTranscriptText(task,text);task.output = (task.output + text).slice(-100000); changed(); };
   child.stdout.on('data', chunk => { const str = chunk.toString(); append(str); pending += str; const lines = pending.split('\n'); pending = lines.pop(); for (const line of lines) { try { const event = JSON.parse(line); if (agent.id === 'codex' && event.type === 'thread.started' && /^[0-9a-f-]{36}$/i.test(event.thread_id || '')) task.sessionId = event.thread_id; if (agent.id === 'claude' && /^[0-9a-f-]{36}$/i.test(event.session_id || '')) task.sessionId = event.session_id; } catch {} } });
   child.stderr.on('data', append); child.stdin.on('error', () => {});
   child.on('error', err => { append(`\n${err.message}`); task.status = 'failed'; save(); });

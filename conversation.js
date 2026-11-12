@@ -15,3 +15,9 @@ export function appendAssistantText(task,text){
  if(last?.role==='assistant')last.text=(last.text+text).slice(-100000);
  else messages.push({role:'assistant',text:text.slice(-100000)});
 }
+export function appendTranscriptText(task,text){
+ if(!text)return;
+ const messages=task.messages ||= [],last=messages.at(-1);
+ if(last?.role==='transcript')last.text=(last.text+text).slice(-100000);
+ else messages.push({role:'transcript',text:text.slice(-100000)});
+}
