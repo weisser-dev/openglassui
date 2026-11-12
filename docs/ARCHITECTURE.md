@@ -20,7 +20,7 @@ flowchart LR
     Core --> Projects
     Core --> Codex & Claude & Kiro & Generic
   end
-  Tunnel["HTTPS tunnel<br/>Cloudflare or ngrok"] --> Gateway
+  Tunnel["HTTPS access<br/>Cloudflare, ngrok or Tailscale Serve"] --> Gateway
   subgraph Meta[Meta device path]
     Phone["iPhone + Meta AI<br/>adds web app"]
     Glass["Meta display web app<br/>controls and WebMCP"]
