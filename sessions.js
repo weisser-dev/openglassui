@@ -20,6 +20,7 @@ async function codexRequest(method, params, command='codex') {
   return {data};}
  finally {clearTimeout(timeout);child.kill();}
 }
+export async function listCodexModels(command='codex') {const result=await codexRequest('model/list',{limit:100,includeHidden:false},command);return (result.data||[]).filter(item=>typeof item.id==='string').map(item=>({id:item.id,name:item.displayName||item.id}));}
 export async function listAgentSessions(agent, workspace, command='codex') {
  if(agent==='claude') return (await listSessions({dir:workspace,includeWorktrees:false})).filter(s=>!s.cwd || s.cwd===workspace).map(s=>({id:s.sessionId,agent,title:s.customTitle||s.summary||s.firstPrompt||'Claude-Sitzung',updatedAt:s.lastModified}));
  if(agent==='codex') {const result=await codexRequest('thread/list',{cwd:workspace,limit:50,sortKey:'updated_at'},command);return result.data.map(s=>({id:s.id,agent,title:s.name||s.preview||'Codex-Sitzung',updatedAt:s.updatedAt}));}
@@ -54,7 +55,7 @@ export function runClaude({prompt,workspace,sessionId,onMessage,onDecision,onDon
  return {kill(){abort.abort();process.close();}};
 }
 
-export function runCodex({prompt,workspace,sessionId,command='codex',onSession,onText,onUsage=()=>{},onEvent=()=>{},onDecision,onDone}) {
+export function runCodex({prompt,workspace,sessionId,command='codex',model,onSession,onModel=()=>{},onText,onUsage=()=>{},onEvent=()=>{},onDecision,onDone}) {
  const child=spawn(command,['app-server','--enable','default_mode_request_user_input'],{stdio:['pipe','pipe','pipe']});
  const lines=createInterface({input:child.stdout});let seq=0,finished=false,threadId,turnId,stderr='';const pending=new Map();
  function finish(err){if(finished)return;finished=true;for(const p of pending.values())p.reject(err||new Error('Sitzung beendet.'));pending.clear();child.kill();onDone(err);}
@@ -76,9 +77,9 @@ export function runCodex({prompt,workspace,sessionId,command='codex',onSession,o
   }
   if(msg.method==='thread/tokenUsage/updated')onUsage({provider:'codex',tokenUsage:msg.params.tokenUsage});
   if(msg.method==='item/agentMessage/delta')onText(msg.params.delta||'');
-  if(msg.method==='item/commandExecution/outputDelta')onText(msg.params.delta||'');
+  // Command output is not an assistant message; tool progress arrives as events.
   if(msg.method==='turn/completed'&&msg.params.threadId===threadId){const turn=msg.params.turn;finish(turn.status==='completed'?null:new Error(turn.error?.message||`Codex: ${turn.status}`));}
  });
- (async()=>{try{await call('initialize',{clientInfo:{name:'openglassui',title:'OpenGlassUI',version:'0.1.0'},capabilities:{experimentalApi:true}});send({method:'initialized',params:{}});const guidance='Wenn du eine inhaltliche Entscheidung des Nutzers brauchst, frage mit request_user_input und schlage anhand der Aufgabe und bisherigen Ergebnisse kurze, konkrete Auswahlmöglichkeiten vor. Triff die Entscheidung nicht selbst.';const params=sessionId?{threadId:sessionId,cwd:workspace,approvalPolicy:'on-request'}:{cwd:workspace,approvalPolicy:'on-request',developerInstructions:guidance};const started=await call(sessionId?'thread/resume':'thread/start',params);threadId=started.thread.id;onSession(threadId);const startedTurn=await call('turn/start',{threadId,input:[{type:'text',text:prompt,text_elements:[]}]});turnId=startedTurn.turn.id;}catch(e){finish(e);}})();
+ (async()=>{try{await call('initialize',{clientInfo:{name:'openglassui',title:'OpenGlassUI',version:'0.1.0'},capabilities:{experimentalApi:true}});send({method:'initialized',params:{}});const guidance='Wenn du eine inhaltliche Entscheidung des Nutzers brauchst, frage mit request_user_input und schlage anhand der Aufgabe und bisherigen Ergebnisse kurze, konkrete Auswahlmöglichkeiten vor. Triff die Entscheidung nicht selbst.';const params=sessionId?{threadId:sessionId,cwd:workspace,approvalPolicy:'on-request'}:{cwd:workspace,approvalPolicy:'on-request',developerInstructions:guidance};const started=await call(sessionId?'thread/resume':'thread/start',params);threadId=started.thread.id;onSession(threadId,started.model || started.thread.model);const startedTurn=await call('turn/start',{threadId,...(model?{model}:{}),input:[{type:'text',text:prompt,text_elements:[]}]});turnId=startedTurn.turn.id;if(model)onModel(model);}catch(e){finish(e);}})();
  return {kill(){if(finished)return;if(threadId&&turnId){const deadline=setTimeout(()=>finish(new Error('Gestoppt.')),1000);deadline.unref();call('turn/interrupt',{threadId,turnId}).catch(()=>{}).finally(()=>{clearTimeout(deadline);finish(new Error('Gestoppt.'));});}else finish(new Error('Gestoppt.'));},forceKill(){finish(new Error('Gestoppt.'));}};
 }

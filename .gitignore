@@ -3,3 +3,5 @@ config.json
 .DS_Store
 
 .openglass/
+
+demo/wearable/

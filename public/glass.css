@@ -15,3 +15,9 @@
 
 /* Scale text while keeping controls and layout usable at each setting. */
 .wearable{font-size:calc(16px * var(--glass-text-scale,1))}.wearable h1{font-size:calc(29px * var(--glass-text-scale,1))}.wearable .hint,.wearable .composer-send{font-size:calc(13px * var(--glass-text-scale,1))}.wearable .bubble{font-size:calc(14px * var(--glass-text-scale,1))}.wearable .item-copy strong{font-size:calc(15px * var(--glass-text-scale,1))}.wearable .item-copy small,.wearable .task-events,.wearable .usage{font-size:calc(12px * var(--glass-text-scale,1))}.wearable .eyebrow,.wearable footer{font-size:calc(10px * var(--glass-text-scale,1))}.composer-bar textarea{height:auto;min-height:48px;line-height:1.4}.text-preview{margin:18px 0 24px}
+
+.composer-bar textarea{caret-color:transparent;cursor:pointer}
+
+.transcript-label{display:block;color:#aebfaa;font-size:.75em;margin-bottom:6px}
+
+.composer-model{flex:none;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:48px;padding:0 10px;border:1px solid #617e57;border-radius:999px;background:#263b24;color:#f1f7ed;font-size:12px}

@@ -14,7 +14,7 @@ test('selected language chooses a matching device voice for playback',()=>{
  let spoken;class Utterance{constructor(text){this.text=text;}}
  const german={lang:'de-DE'},english={lang:'en-US'};
  const audio=context.createWearableAudio({speak:utterance=>{spoken=utterance;},getVoices:()=>[english,german]},Utterance);
- audio.speak('Guten Tag',()=>{},'de-DE');assert.equal(spoken.lang,'de-DE');assert.equal(spoken.voice,german);
+ let ended=false;audio.speak('Guten Tag',()=>{},'de-DE',()=>ended=true);spoken.onend();assert.equal(ended,true);assert.equal(spoken.lang,'de-DE');assert.equal(spoken.voice,german);
  audio.speak('Hello',()=>{},'en-US');assert.equal(spoken.voice,english);
  audio.speak('Bonjour',()=>{},'fr-FR');assert.equal(spoken.lang,'fr-FR');assert.equal(spoken.voice,undefined);
 });

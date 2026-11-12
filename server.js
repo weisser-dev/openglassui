@@ -7,12 +7,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
 import { WebSocketServer, WebSocket } from 'ws';
-import { listAgentSessions, readAgentSession, runClaude, runCodex, discoverAgentProjects, listGlobalSessions } from './sessions.js';
-import { runKiro, listKiroSessions, readKiroSession, listAllKiroSessions } from './kiro.js';
+import { listAgentSessions, readAgentSession, runClaude, runCodex, discoverAgentProjects, listGlobalSessions, listCodexModels } from './sessions.js';
+import { runKiro, listKiroSessions, readKiroSession, listAllKiroSessions, listOpenCodeSessions, readOpenCodeSession, listAllOpenCodeSessions } from './kiro.js';
 import { createTunnelManager } from './tunnel.js';
 import { createPushService } from './push.js';
 import { formatSession } from './session-format.js';
 import { readProjectRepository } from './project-metadata.js';
+import { startConversationTurn, appendAssistantText } from './conversation.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.resolve(process.env.OPENGLASS_CONFIG || path.join(root, 'config.json'));
@@ -93,30 +94,30 @@ function updateTaskEvent(task,event){
  changed();
 }
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
-function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) {
+function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), model) {
   const workspace = project.path;
-  const args = oldTask && agent.id !== 'kiro' ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
+  const args = oldTask && !['kiro','opencode'].includes(agent.id) ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
   if (!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string') throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
   const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
-  task.status = 'running'; task.lastMessageAt=new Date().toISOString(); task.trackedMessages=(task.trackedMessages || 0)+1; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
+  startConversationTurn(task,prompt.trim());task.status = 'running'; task.lastMessageAt=new Date().toISOString(); task.trackedMessages=(task.trackedMessages || 0)+1; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
   tasks.set(task.id, task); save();
-  if (agent.id === 'kiro') {
-    const handle=runKiro({command:agent.command,args:agent.acpArgs || ['acp','--agent-engine','v3'],workspace,prompt,sessionId:oldTask?.sessionId,
-      onSession(id){task.sessionId=id;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
+  if (['kiro','opencode'].includes(agent.id)) {
+    const handle=runKiro({command:agent.command,args:agent.acpArgs || (agent.id==='opencode'?['acp']:['acp','--agent-engine','v3']),agentName:agent.name,workspace,prompt,sessionId:oldTask?.sessionId,
+      onSession(id){task.sessionId=id;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
       onDecision(decision){return queueDecision(task,decision);},
       onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'codex') {
-    const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,
-      onSession(id){task.sessionId=id;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage=usage;save();},
+    const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,model,
+      onSession(id,actualModel){task.sessionId=id;if(actualModel)task.model=actualModel;save();},onModel(actualModel){task.model=actualModel;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage=usage;save();},
       onDecision(decision){return queueDecision(task,decision);},
       onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'claude') {
     const handle = runClaude({prompt, workspace, sessionId:oldTask?.sessionId,
-      onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text){task.lastMessageAt=new Date().toISOString();task.output=(task.output+text+'\n').slice(-100000);} } if(message.type==='result') { if(message.usage || message.total_cost_usd!==undefined) task.usage={provider:'claude',usage:message.usage,costUsd:message.total_cost_usd}; if(message.is_error) task.status='failed'; } changed(); },
+      onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='system'&&message.subtype==='init'&&message.model)task.model=message.model; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text){task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text+'\n');task.output=(task.output+text+'\n').slice(-100000);} } if(message.type==='result') { if(message.usage || message.total_cost_usd!==undefined) task.usage={provider:'claude',usage:message.usage,costUsd:message.total_cost_usd}; if(message.is_error) task.status='failed'; } changed(); },
       onDecision(decision,signal) { return queueDecision(task,decision,signal); },
       onDone(error) { if(error) {task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); }
     }); task.process=handle; return task;
@@ -143,9 +144,10 @@ const handler = async (req, res) => {
     }
     if (url.pathname.startsWith('/api/')) {
       if (!isLocal && !authorized(req)) return json(res,401,{error:'Bitte zuerst koppeln.'});
-      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); const sessions=await (agent==='kiro'?listKiroSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{sessions}); }
-      const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude|kiro)\/([a-z0-9_-]+)$/i);
-      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
+      if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || !['claude','codex','kiro','opencode'].includes(agent)) return json(res,400,{error:'Agent nicht unterstützt.'}); const sessions=await (agent==='kiro'?listKiroSessions(project.path,cfg.command):agent==='opencode'?listOpenCodeSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{sessions}); }
+      const sessionMatch=url.pathname.match(/^\/api\/sessions\/(codex|claude|kiro|opencode)\/([a-z0-9_-]+)$/i);
+      if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg)return json(res,404,{error:'Agent nicht konfiguriert.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):sessionMatch[1]==='opencode'?readOpenCodeSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
+      if (req.method === 'GET' && url.pathname === '/api/models') {const agent=agents.find(a=>a.id===url.searchParams.get('agent'));if(!agent || agent.id!=='codex')return json(res,200,{models:[],supported:false});const models=await listCodexModels(agent.command);assertCurrentAccess(req);return json(res,200,{models,supported:true});}
       if (req.method === 'GET' && url.pathname === '/api/push/status') { const device=requestDevice(req);if(!device)return json(res,403,{error:'Only paired devices can check background alerts.'});return json(res,200,{enabled:Boolean(device.push)}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
@@ -170,8 +172,8 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/tunnel/stop') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,tunnel.stop()); }
       if (url.pathname === '/api/sessions/discover') {
         if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const input=await body(req),cfg=agents.find(a=>a.id===input.agent);
-        if(!cfg || !['codex','claude','kiro'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const sessions=await (input.agent==='kiro'?listAllKiroSessions(workspace,cfg.command):listGlobalSessions(input.agent,cfg.command));const visible=[],repositoryCache=new Map();
+        if(!cfg || !['codex','claude','kiro','opencode'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
+        const sessions=await (input.agent==='kiro'?listAllKiroSessions(workspace,cfg.command):input.agent==='opencode'?listAllOpenCodeSessions(workspace,cfg.command):listGlobalSessions(input.agent,cfg.command));const visible=[],repositoryCache=new Map();
         for(const session of sessions){try{if(typeof session.cwd!=='string'||!path.isAbsolute(session.cwd))continue;const cwd=await realpath(session.cwd);const stat=await import('node:fs/promises').then(fs=>fs.stat(cwd));if(!stat.isDirectory())continue;if(!repositoryCache.has(cwd))repositoryCache.set(cwd,await readProjectRepository(cwd));visible.push({...session,cwd,repository:repositoryCache.get(cwd),projectId:[...projects.values()].find(p=>p.path===cwd)?.id || null});}catch{}}
         return json(res,200,{sessions:visible});
       }
@@ -201,15 +203,15 @@ const handler = async (req, res) => {
       }
       if (url.pathname === '/api/revoke') { if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'}); devices.clear(); pairings.clear(); await saveDevices(); changed(); return json(res,200,{ok:true}); }
       if (url.pathname === '/api/sessions/open') {
-        const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || !['codex','claude','kiro'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const project=projectById(input.projectId || 'default'); const data=await (input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);
+        const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || !['codex','claude','kiro','opencode'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
+        const project=projectById(input.projectId || 'default'); const data=await (input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):input.agent==='opencode'?readOpenCodeSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);
         const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:formatSession(data,input.agent),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
         tasks.set(task.id,task);save();return json(res,201,exposed(task));
       }
       if (url.pathname === '/api/tasks') {
         const input=await body(req), agent=agents.find(a=>a.id===input.agentId);
         if (!agent || !publicTaskInput(input)) return json(res,400,{error:'Bitte Agent und gültige Aufgabe auswählen.'});
-        const project=projectById(input.projectId || 'default'); return json(res,201,exposed(run(agent,input.prompt,null,project)));
+        if(input.model!==undefined&&(agent.id!=='codex'||typeof input.model!=='string'||!/^[-a-zA-Z0-9_.:]{1,120}$/.test(input.model)))return json(res,400,{error:'Invalid or unsupported model.'});const project=projectById(input.projectId || 'default'); return json(res,201,exposed(run(agent,input.prompt,null,project,input.model)));
       }
       const decisionMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/decision$/);
       if (decisionMatch) {
@@ -230,14 +232,14 @@ const handler = async (req, res) => {
         if (match[2] === 'stop') { if (task.status !== 'running' || !task.process) return json(res,409,{error:'Aufgabe läuft nicht.'}); task.status='stopped'; cancelDecisions(task); task.process.kill('SIGTERM'); save(); return json(res,200,exposed(task)); }
         const input=await body(req), agent=agents.find(a=>a.id===task.agentId);
         if (task.process) return json(res,409,{error:'Der vorherige Agent wird noch beendet. Bitte gleich erneut versuchen.'});
-        if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || agent?.id==='kiro') || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
-        return json(res,200,exposed(run(agent,input.prompt,task)));
+        if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || ['kiro','opencode'].includes(agent?.id)) || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
+        if(input.model!==undefined&&(agent.id!=='codex'||typeof input.model!=='string'||!/^[-a-zA-Z0-9_.:]{1,120}$/.test(input.model)))return json(res,400,{error:'Invalid or unsupported model.'});return json(res,200,exposed(run(agent,input.prompt,task,undefined,input.model)));
       }
       return json(res,404,{error:'Nicht gefunden.'});
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','wearable-audio.js','wearable-navigation.js','recent-chats.js','sw.js','favicon.svg','setup-glasses.png','setup.js','i18n.js','.well-known/meta-wearables-manifest.json','icons/app-icon.svg'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','wearable-audio.js','wearable-navigation.js','recent-chats.js','glass-i18n.js','sw.js','favicon.svg','setup-glasses.png','setup.js','i18n.js','.well-known/meta-wearables-manifest.json','icons/app-icon.svg'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,error.status || 400,{error:error.message}); }

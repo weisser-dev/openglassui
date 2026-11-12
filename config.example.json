@@ -50,6 +50,15 @@
         "stream-json"
       ],
       "input": "stdin"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "command": "opencode",
+      "args": [
+        "acp"
+      ],
+      "input": "stdin"
     }
   ]
 }

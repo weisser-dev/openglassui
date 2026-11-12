@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 // Kiro ACP uses newline-delimited JSON-RPC. One process owns one turn; no prompt
 // is automatically retried after an interrupted transport.
-export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'], workspace, prompt, sessionId, onSession, onText, onUsage, onEvent=()=>{}, onDecision, onDone}) {
+export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'], workspace, prompt, sessionId, onSession, onText, onUsage, onEvent=()=>{}, onDecision, onDone, agentName='Kiro'}) {
  const child=spawn(command,args,{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
  const lines=createInterface({input:child.stdout}); const pending=new Map(); let sequence=0, activeSession=sessionId, replaying=Boolean(sessionId), finished=false;
  const send=payload=>{ if(!child.stdin.destroyed) child.stdin.write(JSON.stringify({jsonrpc:'2.0',...payload})+'\n'); };
@@ -12,7 +12,7 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
  function finish(error){if(finished)return;finished=true;for(const {reject} of pending.values())reject(error||new Error('Verbindung beendet'));pending.clear();child.kill();onDone(error);}
  // Drain diagnostic output without persisting potentially sensitive URLs or credentials.
  child.stderr.on('data',()=>{});
- child.on('error',finish);child.on('close',code=>{if(!finished)finish(new Error(`Kiro-Verbindung beendet (${code}). Bitte Kiro-Anmeldung und CLI-Konfiguration prüfen.`));});
+ child.on('error',finish);child.on('close',code=>{if(!finished)finish(new Error(`${agentName} connection ended (${code}). Check the agent login and CLI configuration.`));});
  lines.on('line',async line=>{let message;try{message=JSON.parse(line)}catch{return;}
   if(message.id!==undefined && !message.method){const wait=pending.get(message.id);if(wait){pending.delete(message.id);message.error?wait.reject(new Error(message.error.message)):wait.resolve(message.result);}return;}
   if(message.id!==undefined && message.method){
@@ -20,7 +20,7 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
    if(!activeSession || message.params?.sessionId!==activeSession){send({id:message.id,result:{outcome:{outcome:'cancelled'}}});return;}
    const options=(Array.isArray(message.params.options)?message.params.options:[]).filter(option=>option && typeof option.optionId==='string' && ['allow_once','reject_once'].includes(option.kind));
    if(!options.length){send({id:message.id,result:{outcome:{outcome:'cancelled'}}});return;}
-   const decision={id:randomUUID(),kind:'kiro_permission',toolName:'Kiro',input:{toolCall:message.params.toolCall,options}};
+   const decision={id:randomUUID(),kind:'kiro_permission',toolName:agentName,input:{toolCall:message.params.toolCall,options}};
    try { const answer=await onDecision(decision); const chosen=options.find(option=>option.optionId===answer?.optionId);send({id:message.id,result:{outcome:chosen?{outcome:'selected',optionId:chosen.optionId}:{outcome:'cancelled'}}}); }
    catch {send({id:message.id,result:{outcome:{outcome:'cancelled'}}});} return;
   }
@@ -34,18 +34,19 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
  });
  (async()=>{try{
    const initialized=await call('initialize',{protocolVersion:1,clientCapabilities:{},clientInfo:{name:'openglassui',version:'0.1.0'}});
-   if(sessionId && !initialized.agentCapabilities?.loadSession)throw new Error('Diese Kiro-Version unterstützt das Wiederaufnehmen über ACP nicht.');
+   if(sessionId && !initialized.agentCapabilities?.loadSession)throw new Error(`${agentName} does not support resuming over ACP.`);
    const opened=await call(sessionId?'session/load':'session/new',{...(sessionId?{sessionId}:{}),cwd:workspace,mcpServers:[]});
-   replaying=false;activeSession=sessionId || opened.sessionId; if(!activeSession)throw new Error('Kiro hat keine Sitzungs-ID zurückgegeben.');onSession(activeSession);
+   replaying=false;activeSession=sessionId || opened.sessionId; if(!activeSession)throw new Error(`${agentName} did not return a session ID.`);onSession(activeSession);
    const result=await call('session/prompt',{sessionId:activeSession,prompt:[{type:'text',text:prompt}]});
-   if(result?.stopReason && !['end_turn','EndTurn'].includes(result.stopReason))throw new Error(`Kiro: ${result.stopReason}`);
+   if(result?.stopReason && !['end_turn','EndTurn'].includes(result.stopReason))throw new Error(`${agentName}: ${result.stopReason}`);
    finish(null);
   }catch(error){finish(error);}})();
  return {kill(){if(activeSession)send({method:'session/cancel',params:{sessionId:activeSession}});finish(new Error('Gestoppt.'));}};
 }
 
-async function kiroRead(command, workspace, action, all=false) {
- const child=spawn(command,['acp','--agent-engine','v3'],{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
+async function kiroRead(command, workspace, action, all=false, agent='kiro') {
+ const args=agent==='opencode'?['acp']:['acp','--agent-engine','v3'];
+ const child=spawn(command,args,{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
  child.stderr.resume();
  const lines=createInterface({input:child.stdout});let seq=0,lastReplayType=null;const pending=new Map(), replay=[];
  function send(value){if(!child.stdin.destroyed)child.stdin.write(JSON.stringify({jsonrpc:'2.0',...value})+'\n');}
@@ -66,7 +67,7 @@ async function kiroRead(command, workspace, action, all=false) {
    cursor=list.nextCursor;
    if(cursor!=null){if(typeof cursor!=='string' || cursors.has(cursor) || cursors.size>=1000)throw new Error('Kiro hat eine ungültige Seitennavigation zurückgegeben.');cursors.add(cursor);}
   } while(cursor!=null);
-  if(!action)return sessions.map(s=>({id:s.sessionId,agent:'kiro',title:s.title || 'Kiro-Sitzung',updatedAt:s.updatedAt,...(all?{cwd:s.cwd}:{})}));
+  if(!action)return sessions.map(s=>({id:s.sessionId,agent,title:s.title || (agent==='opencode'?'OpenCode session':'Kiro-Sitzung'),updatedAt:s.updatedAt,...(all?{cwd:s.cwd}:{})}));
   if(!sessions.some(s=>s.sessionId===action))throw new Error('Sitzung nicht im konfigurierten Projekt gefunden.');
   if(!init.agentCapabilities.loadSession)throw new Error('Diese Kiro-Version unterstützt das Öffnen nicht.');
   await call('session/load',{sessionId:action,cwd:workspace,mcpServers:[]});return replay;
@@ -75,3 +76,7 @@ async function kiroRead(command, workspace, action, all=false) {
 export const listKiroSessions=(workspace,command='kiro-cli')=>kiroRead(command,workspace);
 export const readKiroSession=(workspace,id,command='kiro-cli')=>kiroRead(command,workspace,id);
 export const listAllKiroSessions=(workspace,command='kiro-cli')=>kiroRead(command,workspace,undefined,true);
+
+export const listOpenCodeSessions=(workspace,command='opencode')=>kiroRead(command,workspace,undefined,false,'opencode');
+export const readOpenCodeSession=(workspace,id,command='opencode')=>kiroRead(command,workspace,id,false,'opencode');
+export const listAllOpenCodeSessions=(workspace,command='opencode')=>kiroRead(command,workspace,undefined,true,'opencode');

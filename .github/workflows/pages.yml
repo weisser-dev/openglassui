@@ -2,7 +2,7 @@ name: Deploy demo to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: ['demo/**', '.github/workflows/pages.yml']
+    paths: ['demo/**', 'public/**', 'scripts/build-demo.js', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Build wearable demo from application sources
+        run: node scripts/build-demo.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
