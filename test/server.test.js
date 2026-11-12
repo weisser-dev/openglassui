@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir, chmod } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
@@ -76,4 +76,16 @@ test('shutdown persists the stopped status of a running task',async()=>{
   const response=await fetch(base+'/api/tasks',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({agentId:'mock',prompt:'Test'})});assert.equal(response.status,201);const task=await response.json();assert.equal(task.status,'running');
   const exited=once(server,'exit');server.kill('SIGTERM');const [code]=await exited;assert.equal(code,0);const saved=JSON.parse(await readFile(path.join(dir,'data','tasks.json'),'utf8'));assert.equal(saved.find(t=>t.id===task.id).status,'stopped');
  }finally{if(server.exitCode===null)server.kill();await rm(dir,{recursive:true,force:true});}
+});
+
+test('a stopped Codex session cannot resume until its previous run settles',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'openglass-resume-'));const executable=path.join(dir,'codex');const port=String(20000+Math.floor(Math.random()*20000));const base=`http://127.0.0.1:${port}`;
+ const script=`#!${process.execPath}
+ const readline=require('node:readline');const send=x=>console.log(JSON.stringify(x));readline.createInterface({input:process.stdin}).on('line',s=>{const m=JSON.parse(s);if(m.method==='initialize')send({id:m.id,result:{}});if(m.method==='thread/start'||m.method==='thread/resume')send({id:m.id,result:{thread:{id:'12345678-1234-1234-1234-123456789abc'}}});if(m.method==='turn/start'){send({id:m.id,result:{turn:{id:'turn'}}});send({method:'item/agentMessage/delta',params:{delta:'ready'}})}});`;
+ await writeFile(executable,script);await chmod(executable,0o755);await writeFile(path.join(dir,'config.json'),JSON.stringify({workspace:dir,agents:[{id:'codex',name:'Codex',command:executable,args:[],resumeArgs:[],input:'stdin'}]}));
+ const server=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:port,OPENGLASS_CONFIG:path.join(dir,'config.json'),OPENGLASS_DATA_DIR:path.join(dir,'data')},stdio:'ignore'});const post=(url,data)=>fetch(base+url,{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify(data)});
+ try{let ready=false;for(let i=0;i<50;i++){try{await fetch(base+'/api/state');ready=true;break;}catch{await delay(50);}}assert.ok(ready);const task=await (await post('/api/tasks',{agentId:'codex',prompt:'Test'})).json();
+  for(let i=0;i<50;i++){const state=await (await fetch(base+'/api/state')).json();if(state.tasks[0]?.output.includes('ready'))break;await delay(25);}
+  assert.equal((await post(`/api/tasks/${task.id}/stop`,{})).status,200);assert.equal((await post(`/api/tasks/${task.id}/resume`,{prompt:'Continue'})).status,409);await delay(1100);assert.equal((await post(`/api/tasks/${task.id}/resume`,{prompt:'Continue'})).status,200);
+ }finally{const exited=once(server,'exit');server.kill();await exited;await rm(dir,{recursive:true,force:true});}
 });

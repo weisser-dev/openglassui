@@ -201,6 +201,7 @@ const handler = async (req, res) => {
         const task=tasks.get(match[1]); if (!task) return json(res,404,{error:'Aufgabe nicht gefunden.'});
         if (match[2] === 'stop') { if (task.status !== 'running' || !task.process) return json(res,409,{error:'Aufgabe läuft nicht.'}); task.status='stopped'; cancelDecisions(task); task.process.kill('SIGTERM'); save(); return json(res,200,exposed(task)); }
         const input=await body(req), agent=agents.find(a=>a.id===task.agentId);
+        if (task.process) return json(res,409,{error:'Der vorherige Agent wird noch beendet. Bitte gleich erneut versuchen.'});
         if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || agent?.id==='kiro') || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
         return json(res,200,exposed(run(agent,input.prompt,task)));
       }
