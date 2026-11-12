@@ -19,3 +19,4 @@
 [data-theme=light] .demo-controls button{background:#e4f0e1;color:#193a21;border-color:#86a987}
 [data-theme=light] .device-bar{background:#e3efdf;color:#286f38}
 @media(max-width:600px){.nav nav{gap:10px}.theme-picker{font-size:11px}.theme-picker select{max-width:90px}}
+.signal-center{width:260px;height:auto;border:0;border-radius:0;background:transparent;box-shadow:none}.signal-center img{display:block;width:100%;height:auto;filter:drop-shadow(0 12px 30px #8ff44322)}
