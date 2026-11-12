@@ -98,7 +98,7 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) 
   const args = oldTask && agent.id !== 'kiro' ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
   if (!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string') throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
   const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
-  task.status = 'running'; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
+  task.status = 'running'; task.trackedMessages=(task.trackedMessages || 0)+1; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
   tasks.set(task.id, task); save();
   if (agent.id === 'kiro') {
     const handle=runKiro({command:agent.command,args:agent.acpArgs || ['acp','--agent-engine','v3'],workspace,prompt,sessionId:oldTask?.sessionId,

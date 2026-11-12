@@ -14,3 +14,7 @@ test('usage formatting reports only provider-supplied token, context and cost va
  assert.match(format({provider:'kiro',context:{usagePercentage:42.5}}),/42\.5 %/);
  assert.match(format({provider:'kiro'}),/No detailed usage/);
 });
+test('local activity counts tracked prompts without inventing historical values',()=>{
+ const summary=context.window.summarizeLocalActivity([{trackedMessages:2,pendingDecision:{id:'1'}},{},{trackedMessages:-1},{trackedMessages:1}]);
+ assert.equal(summary.tasks,4);assert.equal(summary.messages,3);assert.equal(summary.pending,1);
+});

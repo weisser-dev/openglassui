@@ -112,6 +112,8 @@ The glasses page organizes agents, projects and chats into navigable screens, wi
 
 The chat composer presents dictation or handwriting as the primary action. Select the field to open the device's composer; a web page cannot open it automatically. Usage and tool activity are hidden by default and can be enabled in glasses settings. Read-aloud is also off by default; manual and automatic playback depend on the device browser's speech synthesis support, which has not yet been verified on Meta glasses.
 
+After setup is completed, subsequent visits open the dashboard directly; setup remains available from the dashboard. Configuration, paired-device records and task history are stored locally in the ignored `.openglass` directory (or `OPENGLASS_DATA_DIR`), currently as JSON rather than SQLite. The dashboard counts locally stored tasks, pending decisions and prompts sent through OpenGlassUI since message tracking was introduced. It does not count historical messages or activity in other clients. Token and cost figures are shown per task only when reported by the provider; their scope varies by provider. Effective agent permissions and comprehensive MCP usage are not currently available. This activity information stays local to the companion and is not sent to an analytics service.
+
 The gateway also serves Meta's `/.well-known/meta-wearables-manifest.json` and a monochrome glasses icon for the launcher. An existing installation may need to be removed and added again to refresh its icon; actual launcher rendering has not yet been verified on hardware. See Meta's [app icon utility](https://github.com/meta/meta-ray-ban-display-ui-toolkit-web/tree/main/examples/app-icon-generator).
 
 ## Security and privacy
