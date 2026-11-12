@@ -31,7 +31,8 @@ function watchEvents(){
  socket.onclose=event=>{if(refreshTimer)clearTimeout(refreshTimer);$('#connection').textContent='NICHT VERBUNDEN';if(event.code===1008){connected=false;$('#message').hidden=false;$('#message').textContent='Verbindung widerrufen oder Anmeldung abgelaufen. Bitte erneut koppeln.';return;}if(!opened){watchChanges();return;}setTimeout(()=>{if(connected)watchEvents();},5000);};
  socket.onerror=()=>{};
 }
-async function post(url,data){try{await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});await refresh(true);}catch(e){$('#message').hidden=false;$('#message').textContent=e.message;}}
+const pendingActions=new Set();
+async function post(url,data){if(pendingActions.has(url))return false;pendingActions.add(url);const errorElement=$('#action-error');errorElement.hidden=true;try{await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});await refresh(true);return true;}catch(e){errorElement.textContent=e.message;errorElement.hidden=false;return false;}finally{pendingActions.delete(url);}}
 $('#push-enable').onclick=async()=>{try{if(!token)throw new Error('Bitte zuerst ein Gerät koppeln.');$('#push-status').textContent='Benachrichtigungen werden eingerichtet …';await enableBackgroundPush(api);$('#push-status').textContent='Hintergrundhinweise aktiviert. Die Zustellung auf diesem Gerät ist noch nicht geprüft.';}catch(error){$('#push-status').textContent=error.message;}};
 $('#push-disable').onclick=async()=>{try{await disableBackgroundPush(api);$('#push-status').textContent='Hintergrundhinweise ausgeschaltet.';}catch(error){$('#push-status').textContent=error.message;}};
 $('#start').onclick=()=>post('/api/tasks',{agentId:$('#agent').value,projectId:$('#project').value,prompt:$('#prompt').value});

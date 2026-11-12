@@ -4,3 +4,4 @@
 #usage-overview article{border-top:1px solid #465542;padding:12px 0;font-size:13px}#usage-overview pre{white-space:pre-wrap;overflow-wrap:anywhere}
 input:focus-visible,a:focus-visible,pre:focus-visible{outline:3px solid #c4ff77;outline-offset:2px}
 .task-events{font-size:13px;color:#d9e7d1}.task-events h3{font-size:15px}.task-events li{margin:6px 0;overflow-wrap:anywhere}
+#action-error{color:#ffd4c8;border:1px solid #e39580;border-radius:8px;padding:10px}
