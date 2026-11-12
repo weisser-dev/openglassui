@@ -12,6 +12,7 @@ import { runKiro, listKiroSessions, readKiroSession, listAllKiroSessions } from 
 import { createTunnelManager } from './tunnel.js';
 import { createPushService } from './push.js';
 import { formatSession } from './session-format.js';
+import { readProjectRepository } from './project-metadata.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.resolve(process.env.OPENGLASS_CONFIG || path.join(root, 'config.json'));
@@ -25,7 +26,7 @@ await mkdir(dataDir, { recursive:true, mode:0o700 });
 const storePath = path.join(dataDir, 'tasks.json');
 const projectsPath = path.join(dataDir, 'projects.json');
 const setupPath = path.join(dataDir, 'setup.json');
-let setupState={agent:'codex',projectId:'default',provider:'tailscale',complete:false};
+let setupState={agent:'codex',agents:['codex'],projectId:'default',provider:'tailscale',complete:false};
 try{const saved=JSON.parse(await readFile(setupPath,'utf8'));setupState={...setupState,...saved};}catch(error){if(error.code!=='ENOENT')throw error;}
 let setupQueue=Promise.resolve();
 function saveSetup(){const snapshot=JSON.stringify(setupState);setupQueue=setupQueue.catch(()=>{}).then(async()=>{const temp=`${setupPath}.tmp`;await writeFile(temp,snapshot,{mode:0o600});await rename(temp,setupPath);});return setupQueue;}
@@ -154,9 +155,9 @@ const handler = async (req, res) => {
         let timer; const finish=()=>{clearTimeout(timer);watchers.delete(finish);if(!res.writableEnded && !res.destroyed)json(res,200,{revision});};
         watchers.add(finish); timer=setTimeout(finish,25000); res.on('close',()=>{clearTimeout(timer);watchers.delete(finish);}); return;
       }
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupState.complete || !Array.isArray(setupState.agents) || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
-      if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req);if(!agents.some(a=>a.id===input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale'].includes(input.provider)||typeof input.complete!=='boolean')return json(res,400,{error:'Invalid setup selection.'});setupState={agent:input.agent,projectId:input.projectId,provider:input.provider,complete:input.complete};await saveSetup();return json(res,200,{setup:setupState});}
+      if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req),selected=input.agents ?? [input.agent];if(!Array.isArray(selected)||!selected.length||new Set(selected).size!==selected.length||selected.some(id=>!agents.some(a=>a.id===id))||!selected.includes(input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale'].includes(input.provider)||typeof input.complete!=='boolean')return json(res,400,{error:'Invalid setup selection.'});setupState={agent:input.agent,agents:selected,projectId:input.projectId,provider:input.provider,complete:input.complete};await saveSetup();return json(res,200,{setup:setupState});}
       if(url.pathname==='/api/push/subscription' || url.pathname==='/api/push/unsubscribe'){
         const device=requestDevice(req);if(!device)return json(res,403,{error:'Nur gekoppelte Geräte können Push konfigurieren.'});
         if(url.pathname==='/api/push/unsubscribe')await push.unsubscribe(device);else{const input=await body(req);await push.subscribe(device,input.subscription);}return json(res,200,{ok:true});
@@ -168,8 +169,8 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/sessions/discover') {
         if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});const input=await body(req),cfg=agents.find(a=>a.id===input.agent);
         if(!cfg || !['codex','claude','kiro'].includes(input.agent))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const sessions=await (input.agent==='kiro'?listAllKiroSessions(workspace,cfg.command):listGlobalSessions(input.agent,cfg.command));const visible=[];
-        for(const session of sessions){try{if(typeof session.cwd!=='string'||!path.isAbsolute(session.cwd))continue;const cwd=await realpath(session.cwd);const stat=await import('node:fs/promises').then(fs=>fs.stat(cwd));if(!stat.isDirectory())continue;visible.push({...session,cwd,projectId:[...projects.values()].find(p=>p.path===cwd)?.id || null});}catch{}}
+        const sessions=await (input.agent==='kiro'?listAllKiroSessions(workspace,cfg.command):listGlobalSessions(input.agent,cfg.command));const visible=[],repositoryCache=new Map();
+        for(const session of sessions){try{if(typeof session.cwd!=='string'||!path.isAbsolute(session.cwd))continue;const cwd=await realpath(session.cwd);const stat=await import('node:fs/promises').then(fs=>fs.stat(cwd));if(!stat.isDirectory())continue;if(!repositoryCache.has(cwd))repositoryCache.set(cwd,await readProjectRepository(cwd));visible.push({...session,cwd,repository:repositoryCache.get(cwd),projectId:[...projects.values()].find(p=>p.path===cwd)?.id || null});}catch{}}
         return json(res,200,{sessions:visible});
       }
       if (url.pathname === '/api/projects/discover') {
