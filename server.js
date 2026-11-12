@@ -52,6 +52,19 @@ function local(req) { return req.socket.localPort===port && [`127.0.0.1:${port}`
 function localOrigin(req) { return req.headers.origin === `http://127.0.0.1:${port}` || req.headers.origin === `http://localhost:${port}`; }
 function authorizedToken(token) {if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))return false;const hash=hashToken(token);return [...devices.values()].some(device=>device.tokenHash===hash);}
 function authorized(req) { const header=req.headers.authorization || '';return header.startsWith('Bearer ') && authorizedToken(header.slice(7)); }
+// Multiple agent requests can arrive concurrently. Never auto-approve or silently
+// discard the later ones; present them one at a time, in arrival order.
+function queueDecision(task,decision,signal){
+ return new Promise(resolve=>{
+  if(signal?.aborted){resolve({type:'deny'});return;}
+  const queue=decisions.get(task.id) || [];
+  const entry={decision,settle:null};
+  const abort=()=>entry.settle({type:'deny'});
+  entry.settle=answer=>{const index=queue.indexOf(entry);if(index<0)return;queue.splice(index,1);signal?.removeEventListener('abort',abort);if(queue.length){decisions.set(task.id,queue);task.pendingDecision=queue[0].decision;}else{decisions.delete(task.id);delete task.pendingDecision;}save();resolve(answer);};
+  queue.push(entry);decisions.set(task.id,queue);task.pendingDecision=queue[0].decision;signal?.addEventListener('abort',abort,{once:true});save();
+ });
+}
+function cancelDecisions(task){while(decisions.get(task.id)?.length)decisions.get(task.id)[0].settle({type:'deny'});}
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
 function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) {
   const workspace = project.path;
@@ -63,22 +76,22 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId)) 
   if (agent.id === 'kiro') {
     const handle=runKiro({command:agent.command,args:agent.acpArgs || ['acp','--agent-engine','v3'],workspace,prompt,sessionId:oldTask?.sessionId,
       onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
-      onDecision(decision){if(decisions.has(task.id))return Promise.resolve(null);return new Promise(resolve=>{task.pendingDecision=decision;save();decisions.set(task.id,answer=>{decisions.delete(task.id);delete task.pendingDecision;save();resolve(answer);});});},
-      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;delete task.pendingDecision;decisions.delete(task.id);save();}});
+      onDecision(decision){return queueDecision(task,decision);},
+      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();}});
     task.process=handle;return task;
   }
   if (agent.id === 'codex') {
     const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,
       onSession(id){task.sessionId=id;save();},onText(text){task.output=(task.output+text).slice(-100000);changed();},onUsage(usage){task.usage=usage;save();},
-      onDecision(decision){if(decisions.has(task.id))return Promise.resolve({type:'deny'});return new Promise(resolve=>{task.pendingDecision=decision;save();decisions.set(task.id,answer=>{decisions.delete(task.id);delete task.pendingDecision;save();resolve(answer);});});},
-      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;delete task.pendingDecision;decisions.delete(task.id);save();}});
+      onDecision(decision){return queueDecision(task,decision);},
+      onDone(error){if(error){task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();}});
     task.process=handle;return task;
   }
   if (agent.id === 'claude') {
     const handle = runClaude({prompt, workspace, sessionId:oldTask?.sessionId,
       onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text)task.output=(task.output+text+'\n').slice(-100000); } if(message.type==='result') { if(message.usage || message.total_cost_usd!==undefined) task.usage={provider:'claude',usage:message.usage,costUsd:message.total_cost_usd}; if(message.is_error) task.status='failed'; } changed(); },
-      onDecision(decision,signal) { if(decisions.has(task.id))return Promise.resolve({type:'deny'}); return new Promise(resolve=>{ task.pendingDecision=decision; save(); const done=answer=>{decisions.delete(task.id);delete task.pendingDecision;save();resolve(answer);}; decisions.set(task.id,done); signal?.addEventListener('abort',()=>done({type:'deny'}),{once:true}); }); },
-      onDone(error) { if(error) {task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; delete task.pendingDecision; decisions.delete(task.id); save(); }
+      onDecision(decision,signal) { return queueDecision(task,decision,signal); },
+      onDone(error) { if(error) {task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); save(); }
     }); task.process=handle; return task;
   }
   const child = spawn(agent.command, args, { cwd:workspace, shell:false, stdio:['pipe','pipe','pipe'] }); task.process = child;
@@ -152,7 +165,7 @@ const handler = async (req, res) => {
       }
       const decisionMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/decision$/);
       if (decisionMatch) {
-        const task=tasks.get(decisionMatch[1]), resolve=decisions.get(decisionMatch[1]); const input=await body(req); const pending=task?.pendingDecision;
+        const task=tasks.get(decisionMatch[1]), resolve=decisions.get(decisionMatch[1])?.[0]?.settle; const input=await body(req); const pending=task?.pendingDecision;
         if (!resolve || !pending || input.decisionId!==pending.id) return json(res,409,{error:'Entscheidung nicht mehr offen.'});
         if (pending.kind==='kiro_permission' && input.type==='choice') { const option=pending.input.options.find(o=>o.optionId===input.optionId); if(!option) return json(res,400,{error:'Ungültige Auswahl.'}); resolve({optionId:option.optionId}); return json(res,200,{ok:true}); }
         if (pending.kind==='approval' && ['allow','deny'].includes(input.type)) {resolve({type:input.type}); return json(res,200,{ok:true});}
@@ -166,7 +179,7 @@ const handler = async (req, res) => {
       const match=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/(stop|resume)$/);
       if (match) {
         const task=tasks.get(match[1]); if (!task) return json(res,404,{error:'Aufgabe nicht gefunden.'});
-        if (match[2] === 'stop') { if (task.status !== 'running' || !task.process) return json(res,409,{error:'Aufgabe läuft nicht.'}); task.status='stopped'; decisions.get(task.id)?.({type:'deny'}); task.process.kill('SIGTERM'); save(); return json(res,200,exposed(task)); }
+        if (match[2] === 'stop') { if (task.status !== 'running' || !task.process) return json(res,409,{error:'Aufgabe läuft nicht.'}); task.status='stopped'; cancelDecisions(task); task.process.kill('SIGTERM'); save(); return json(res,200,exposed(task)); }
         const input=await body(req), agent=agents.find(a=>a.id===task.agentId);
         if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || agent?.id==='kiro') || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
         return json(res,200,exposed(run(agent,input.prompt,task)));
@@ -175,7 +188,7 @@ const handler = async (req, res) => {
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,400,{error:error.message}); }

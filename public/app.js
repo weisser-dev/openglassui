@@ -5,12 +5,13 @@ function el(tag, className, text) { const e = document.createElement(tag); if (c
 async function refresh(force = false) {
   try {
     const r = await fetch('/api/state'); state = await r.json();
-    if (observedTasks && window.Notification && Notification.permission==='granted') for(const task of state.tasks){ const previous=observedTasks.get(task.id);let label='';if(task.pendingDecision && previous?.decision!==task.pendingDecision.id)label='Entscheidung erforderlich';else if(previous?.status==='running' && task.status!=='running')label=task.status==='completed'?'Aufgabe abgeschlossen':task.status==='failed'?'Aufgabe fehlgeschlagen':'Aufgabe gestoppt';if(label)new Notification('OpenGlassUI', {body:`${task.agentName}: ${label}`}); }
+    if (window.Notification && Notification.permission==='granted') for(const notice of taskNotices(observedTasks,state.tasks)) new Notification('OpenGlassUI',{body:`${notice.agentName}: ${notice.text}`});
     observedTasks=new Map(state.tasks.map(task=>[task.id,{status:task.status,decision:task.pendingDecision?.id}]));
     if (!$('#agent').options.length) for (const a of state.agents) { const o=el('option','',a.name); o.value=a.id; $('#agent').append(o); }
     const projectSelect=$('#project'); const projectValue=projectSelect.value;
     if (JSON.stringify([...projectSelect.options].map(o=>[o.value,o.textContent]))!==JSON.stringify(state.projects.map(p=>[p.id,p.name]))) { projectSelect.replaceChildren(); for(const project of state.projects){const option=el('option','',project.name);option.value=project.id;projectSelect.append(option);} if([...projectSelect.options].some(o=>o.value===projectValue))projectSelect.value=projectValue; }
     const projectList=$('#projects-list');const listSignature=JSON.stringify(state.projects);if(projectList.dataset.signature!==listSignature && !projectList.contains(document.activeElement)){projectList.dataset.signature=listSignature;projectList.replaceChildren();for(const project of state.projects){const row=el('div','device-row');row.append(el('span','',project.name));if(project.id!=='default'){const remove=el('button','stop','Entfernen');remove.type='button';remove.onclick=async()=>{if(!confirm('Projekt aus OpenGlassUI entfernen? Die Dateien bleiben erhalten. Frühere Aufgaben können ohne erneute Einrichtung nicht fortgesetzt werden.'))return;const response=await fetch(`/api/projects/${project.id}/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const result=await response.json();if(!response.ok)alert(result.error);await refresh(true);};row.append(remove);}projectList.append(row);}}
+    window.renderUsageOverview($('#usage-overview'),state.tasks);
     $('#workspace').textContent=state.workspace; $('#count').textContent=state.tasks.length;
     const container=$('#tasks');
     if (!state.tasks.length) return;

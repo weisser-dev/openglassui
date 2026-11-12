@@ -10,3 +10,4 @@
 #desktop-notifications{border:1px solid #50634a;background:transparent;color:#c4d8b9;border-radius:6px;padding:7px;font-size:10px}
 .devices{margin-top:18px;border-top:1px solid #344330;padding-top:12px}.devices h3{font-size:13px}.device-row{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#b5c0b1;font-size:12px}
 .device-row input{min-width:0;max-width:160px;color:#eef4e9;background:#111511;border:1px solid #3a4439;border-radius:5px;padding:8px}
+.usage-overview{margin-top:20px}.usage-overview article{padding:12px 0;border-top:1px solid #303830}.usage-overview article strong{font-size:12px}.usage-overview pre{white-space:pre-wrap;color:#c4d0bf;font-size:11px;overflow-wrap:anywhere}

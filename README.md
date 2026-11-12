@@ -98,7 +98,7 @@ Both the admin service and gateway bind to `127.0.0.1`, not the local network. T
 5. Scan the QR code with the iPhone, follow the Meta AI app's add-web-app flow, and open OpenGlassUI on the glasses **within five minutes**. The pairing code can be redeemed once. This deep-link flow is implemented but has not been verified on the actual device.
 6. Keep the companion and tunnel running while using the app. An Internet connection is needed for the tunnel; the glasses and computer do not need to be on the same LAN when the HTTPS endpoint is reachable.
 
-The glasses page uses authenticated WebSocket revision events with long-poll fallback, and supports keyboard-style directional navigation and Select. It also registers experimental WebMCP tools when `document.modelContext` is available. Whether the glasses expose these tools to Meta AI, support dictation, or route wristband inputs as expected needs a real-device test.
+The glasses page uses authenticated WebSocket revision events with long-poll fallback, and implements geometry-based directional navigation and Select. Meta documents that WebMCP tools are available only while the web app is in the foreground, with a 10-second call deadline. It also registers experimental WebMCP tools when `document.modelContext` is available. Whether the glasses expose these tools to Meta AI, support dictation, or route wristband inputs as expected needs a real-device test.
 
 ## Security and privacy
 
@@ -115,7 +115,7 @@ The glasses page uses authenticated WebSocket revision events with long-poll fal
 - **Physical device validation:** QR deep link, setup, layout, focus order, wristband gestures, text input, WebMCP, reconnection, and long-running use need testing on actual Meta Ray-Ban Display hardware.
 - **Installation and hosting:** Setup scripts and on-demand tunnel start exist, but no signed native installer, automatic updates, stable hosted URL, background service, or managed reverse-proxy access control. Tunnel clients must be installed and ngrok authenticated separately.
 - **Sessions:** No reliable live takeover of sessions running in other clients, no pagination beyond the first 50 sessions, and no full transcript navigation or search. Generic CLI sessions cannot currently be resumed through the app.
-- **Questions and permissions:** No complete multi-select handling or queue for simultaneous requests. Additional concurrent permission requests are denied rather than queued. Not every Codex server-request type is supported. AI-generated choices depend on the agent and may be absent.
+- **Questions and permissions:** Simultaneous requests are queued per task and displayed one at a time; complete multi-select handling is still missing. Not every Codex server-request type is supported. AI-generated choices depend on the agent and may be absent.
 - **Security:** No hardware-bound credentials, encrypted client storage, granular authorization, formal security review, or production-grade proxy authentication. The current deployment must remain a trusted, experimental single-user setup.
 - **Reliability and UX:** No agent health checks, task deletion, rich structured event timeline, reliable child-process-tree termination, comprehensive accessibility testing, or English UI. Outputs are bounded and may be truncated.
 - **Testing:** Automated tests simulate agent decision paths and tunnel processes. A real Kiro task, session list, and continuation were checked locally; a real Claude account, end-to-end tunnel traffic, WebMCP, simulator interaction, and physical glasses still need verification. Cloudflare Quick Tunnel startup was exercised locally against an isolated test target.
@@ -126,7 +126,7 @@ The glasses page uses authenticated WebSocket revision events with long-poll fal
 npm test
 ```
 
-The suite exercises the local API, project allowlist, pairing and revocation, separate gateway, authenticated WebSocket revocation, tunnel manager, and simulated Codex, Claude and Kiro decision handling. It requires permission to bind a localhost port. A successful suite is not a substitute for hardware or provider end-to-end testing.
+The suite exercises the local API, project allowlist, pairing and revocation, separate gateway, authenticated WebSocket revocation, tunnel manager, and simulated Codex, Claude and Kiro decision handling, a paired Kiro event-to-decision flow, foreground-notification transitions, spatial navigation logic, usage formatting and voice-tool validation. It requires permission to bind a localhost port. A successful suite is not a substitute for hardware or provider end-to-end testing.
 
 If Claude reports that its OAuth session has expired, authenticate again using the supported Claude Code login flow, for example `claude auth login` where available, then retry. OpenGlassUI does not request or store your Claude password.
 

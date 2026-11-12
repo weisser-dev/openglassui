@@ -17,14 +17,15 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
   if(message.id!==undefined && !message.method){const wait=pending.get(message.id);if(wait){pending.delete(message.id);message.error?wait.reject(new Error(message.error.message)):wait.resolve(message.result);}return;}
   if(message.id!==undefined && message.method){
    if(message.method!=='session/request_permission'){send({id:message.id,error:{code:-32601,message:'Not supported'}});return;}
-   const options=(message.params.options || []).filter(option=>['allow_once','reject_once'].includes(option.kind));
+   if(!activeSession || message.params?.sessionId!==activeSession){send({id:message.id,result:{outcome:{outcome:'cancelled'}}});return;}
+   const options=(Array.isArray(message.params.options)?message.params.options:[]).filter(option=>option && typeof option.optionId==='string' && ['allow_once','reject_once'].includes(option.kind));
    if(!options.length){send({id:message.id,result:{outcome:{outcome:'cancelled'}}});return;}
    const decision={id:randomUUID(),kind:'kiro_permission',toolName:'Kiro',input:{toolCall:message.params.toolCall,options}};
    try { const answer=await onDecision(decision); const chosen=options.find(option=>option.optionId===answer?.optionId);send({id:message.id,result:{outcome:chosen?{outcome:'selected',optionId:chosen.optionId}:{outcome:'cancelled'}}}); }
    catch {send({id:message.id,result:{outcome:{outcome:'cancelled'}}});} return;
   }
   if(message.method==='session/update' || message.method==='session/notification'){
-   const params=message.params || {}; if(activeSession && params.sessionId && params.sessionId!==activeSession)return;
+   const params=message.params || {}; if(!activeSession || params.sessionId!==activeSession)return;
    const update=params.update || {}; const type=update.sessionUpdate || update.type;
    if(!replaying && ['agent_message_chunk','AgentMessageChunk'].includes(type)){const text=update.content?.text;if(typeof text==='string')onText(text);}
    if(!replaying && ['tool_call','tool_call_update','ToolCall','ToolCallUpdate'].includes(type)){const title=update.title || update.kind || 'Tool';onText(`\n[${title}${update.status?`: ${update.status}`:''}]\n`);}
@@ -45,6 +46,7 @@ export function runKiro({command='kiro-cli', args=['acp','--agent-engine','v3'],
 
 async function kiroRead(command, workspace, action) {
  const child=spawn(command,['acp','--agent-engine','v3'],{cwd:workspace,stdio:['pipe','pipe','pipe'],shell:false});
+ child.stderr.resume();
  const lines=createInterface({input:child.stdout});let seq=0;const pending=new Map(), replay=[];
  function send(value){if(!child.stdin.destroyed)child.stdin.write(JSON.stringify({jsonrpc:'2.0',...value})+'\n');}
  function call(method,params){return new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});send({id,method,params});});}
@@ -52,7 +54,7 @@ async function kiroRead(command, workspace, action) {
  child.on('close',()=>{for(const item of pending.values())item.reject(new Error('Kiro-Verbindung beendet.'));pending.clear()});
  lines.on('line',line=>{let msg;try{msg=JSON.parse(line)}catch{return;}if(msg.id!==undefined&&!msg.method){const item=pending.get(msg.id);if(item){pending.delete(msg.id);msg.error?item.reject(new Error(msg.error.message)):item.resolve(msg.result);}return;}
   if(msg.id!==undefined&&msg.method){send({id:msg.id,error:{code:-32601,message:'Not supported in read-only session browser'}});return;}
-  if(msg.method==='session/update'){const u=msg.params?.update;if(u?.sessionUpdate==='agent_message_chunk' || u?.sessionUpdate==='user_message_chunk'){if(typeof u.content?.text==='string')replay.push({type:u.sessionUpdate==='user_message_chunk'?'user':'assistant',message:{content:u.content.text}});}}
+  if(msg.method==='session/update' && action && msg.params?.sessionId===action){const u=msg.params?.update;if(u?.sessionUpdate==='agent_message_chunk' || u?.sessionUpdate==='user_message_chunk'){if(typeof u.content?.text==='string')replay.push({type:u.sessionUpdate==='user_message_chunk'?'user':'assistant',message:{content:u.content.text}});}}
  });
  const timer=setTimeout(()=>child.kill(),15000);
  try{const init=await call('initialize',{protocolVersion:1,clientCapabilities:{},clientInfo:{name:'openglassui',version:'0.1.0'}});if(!init.agentCapabilities?.sessionCapabilities?.list)throw new Error('Diese Kiro-Version unterstützt die Sitzungsliste nicht.');
