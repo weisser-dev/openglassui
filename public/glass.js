@@ -48,3 +48,5 @@ document.addEventListener('keydown',e=>{
 async function registerVoice(){const context=document.modelContext;if(!context?.registerTool)return;for(const def of createWearableTools(api,()=>$('#project').value))try{await context.registerTool(def);}catch(error){console.warn('WebMCP:',error.message);}}
 
 window.openGlassApi=api; registerVoice(); initialize();
+// Apply updates deferred while a wearer was choosing an answer or typing.
+$('#tasks').addEventListener('focusout',()=>setTimeout(()=>refresh(),0));

@@ -35,6 +35,8 @@ async function refresh(force = false) {
 }
 $('#task-form').addEventListener('submit', async e=>{ e.preventDefault(); const button=e.currentTarget.querySelector('button'); button.disabled=true; try { const r=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:$('#agent').value,projectId:$('#project').value,prompt:$('#prompt').value})}); const result=await r.json(); if(!r.ok) throw new Error(result.error); selected=result.id; $('#prompt').value=''; await refresh(true); } catch(err){alert(err.message);} finally {button.disabled=false;} });
 refresh(); setInterval(refresh,2000);
+// Apply changes deferred while a task control was being edited.
+$('#tasks').addEventListener('focusout',()=>setTimeout(()=>refresh(),0));
 
 $('#pair-form').addEventListener('submit', async e => { e.preventDefault(); try { const r=await fetch('/api/pairing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('#public-url').value})}); const data=await r.json(); if(!r.ok) throw new Error(data.error); $('#pair-qr').src=data.qr; $('#pair-link').href=data.deepLink; $('#pair-result').hidden=false; } catch(error) { alert(error.message); } });
 $('#revoke').onclick=async()=>{ await fetch('/api/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); $('#pair-result').hidden=true; await loadDevices(); };
