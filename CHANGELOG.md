@@ -18,7 +18,7 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Changed
 
-- Replace dashboard task controls with project management and a chart of requests and successful completions from paired devices. Group connection, setup and glasses guidance in a settings dialog.
+- Replace dashboard task controls with project management and a chart of requests and successful completions from paired devices. Group connection settings and glasses guidance in a settings dialog.
 
 - Discourage new Cloudflare Quick Tunnel selections because their addresses change on restart.
 
