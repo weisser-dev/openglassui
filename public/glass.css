@@ -74,4 +74,4 @@ footer{display:flex;justify-content:space-between;gap:12px}#glass-version{white-
 
 .chat-output strong{font-weight:750}.chat-output code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.95em;color:inherit;background:rgba(255,255,255,.08);border-radius:3px;padding:1px 3px}
 
-.unread-badge{display:inline-grid;place-items:center;flex:none;min-width:28px;height:28px;padding:0 7px;border-radius:999px;background:#b9f66c;color:#10200f;font-size:12px;font-weight:800}.unread-badge+.chevron{margin-left:2px}
+.unread-badge{margin-left:auto;display:inline-grid;place-items:center;flex:none;min-width:28px;height:28px;padding:0 7px;border-radius:999px;background:#b9f66c;color:#10200f;font-size:12px;font-weight:800}.unread-badge+.chevron{margin-left:2px}

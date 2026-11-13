@@ -114,6 +114,12 @@ Optional environment variables:
 | `OPENGLASS_CONFIG` | Path to a JSON configuration file | `config.json` in the project directory |
 | `OPENGLASS_DATA_DIR` | Directory for local task data | `.openglass/` in the project directory |
 
+### External Claude Code permission forwarding (experimental)
+
+OpenGlassUI can forward `PermissionRequest` hooks from local Claude Code sessions that have already been imported. On macOS or Linux, enable it explicitly on the machine running Claude Code with `openglassui --enable-claude-hook` (or `node bin/openglassui.js --enable-claude-hook` from a checkout). This merges a hook into your user-level Claude settings, affecting local Claude Code sessions; it does not change permission rules or automatically approve requests. Review `~/.claude/settings.json` and remove the OpenGlassUI hook there to disable it. If `CLAUDE_CONFIG_DIR` is set, that directory is used instead. For a nondefault dashboard port set `OPENGLASS_PORT` for the Claude process.
+
+Import the exact session and keep the companion connected. The hook waits up to 110 seconds for a paired-device answer. If the companion is unreachable, the session is not imported, or the wait expires, control returns to Claude's normal permission flow; no approval is issued. Claude's hooks do not cover every kind of dialog or sandbox network approval, and remote/cloud sessions on another machine need their own integration. Existing requests that appeared before enabling the hook cannot be captured retroactively. Support for Claude Desktop and real glasses requires device testing. See [Claude's hook reference](https://code.claude.com/docs/en/hooks#permissionrequest).
+
 ### Stable addresses across updates
 
 Quick Tunnels are temporary and disabled for new selection in the interface; existing connections are not stopped. To keep the same glasses address, choose **Tailscale Funnel** in setup, enable the provider's HTTPS and Funnel prompts, and enable connection auto-start. Funnel publishes the gateway to the internet; the hostname remains the same while the device name and tailnet name remain unchanged. Test connectivity on the actual glasses: Funnel support on Meta glasses has not yet been verified. Tailscale Serve is private and may not be reachable by the glasses even when the phone can reach it. The managed tunnel reconnects when OpenGlassUI restarts; a restart causes a brief outage.

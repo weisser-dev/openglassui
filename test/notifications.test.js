@@ -26,17 +26,26 @@ test('wearable notice prioritizes outstanding decisions over unrelated completio
 
 test('opening a chat clears its activity badge and dismisses its decision without approving it',()=>{
  const manager=context.createWearableNotices();const task={id:'a',agentName:'Codex',agentId:'codex',sessionId:'s',projectName:'Example',prompt:'Check the tests',status:'completed'};
- manager.update(new Map([['a',{status:'running'}]]),[task]);assert.equal(manager.count(task),1);assert.equal(manager.current([task]),null);
+ task.snapshotMessages=[{role:'assistant',text:'first'}];manager.update(null,[task]);task.snapshotMessages.push({role:'assistant',text:'second'});manager.update(null,[task]);assert.equal(manager.count(task),1);assert.equal(manager.current([task]),null);
  manager.open(task);assert.equal(manager.count(task),0);
  task.pendingDecision={id:'d1'};manager.update(null,[task]);let notice=manager.current([task]);assert.match(notice.text,/Decision required/);manager.open(task);manager.update(null,[task]);assert.equal(manager.current([task]),null);assert.equal(task.pendingDecision.id,'d1');
  task.pendingDecision={id:'d2'};manager.update(null,[task]);assert.equal(manager.current([task]).decisionId,'d2');
 });
 test('duplicate imports share one badge and opening one clears it',()=>{
  const manager=context.createWearableNotices();const tasks=['a','b'].map(id=>({id,agentId:'claude',sessionId:'s',status:'completed',snapshotSync:{changedAt:'new'}}));
- manager.update(new Map(tasks.map(task=>[task.id,{status:'completed',snapshot:'old'}])),tasks);assert.equal(manager.count(tasks[0]),1);assert.equal(manager.count(tasks[1]),1);manager.open(tasks[1]);assert.equal(manager.count(tasks[0]),0);
+ tasks.forEach(task=>task.snapshotMessages=[{role:'assistant',text:'old'}]);manager.update(null,tasks);tasks.forEach(task=>task.snapshotMessages=[{role:'assistant',text:'old'},{role:'assistant',text:'new'}]);manager.update(null,tasks);assert.equal(manager.count(tasks[0]),1);assert.equal(manager.count(tasks[1]),1);manager.open(tasks[1]);assert.equal(manager.count(tasks[0]),0);
 });
 test('new external text activity produces a notice only after a change',()=>{
  const task={id:'a',agentName:'Claude',status:'completed',snapshotSync:{changedAt:'later'}};
  assert.equal(notices(new Map([['a',{status:'completed',snapshot:'before'}]]),[task])[0].text,'New activity');
  assert.equal(notices(new Map([['a',{status:'completed',snapshot:'later'}]]),[task]).length,0);
+});
+
+
+test('unread messages survive a reload and clear when the chat opens',()=>{
+ const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value)};
+ const task={id:'a',agentId:'claude',sessionId:'s',snapshotMessages:[{role:'assistant',text:'old'}]};
+ const first=context.createWearableNotices(storage);first.update(null,[task]);
+ task.snapshotMessages.push({role:'assistant',text:'new'});const reloaded=context.createWearableNotices(storage);reloaded.update(null,[task]);assert.equal(reloaded.count(task),1);assert.ok(!JSON.stringify([...values]).includes('new'));
+ reloaded.open(task);assert.equal(context.createWearableNotices(storage).count(task),0);
 });

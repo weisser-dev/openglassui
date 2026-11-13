@@ -8,6 +8,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Added
 
+- Experimental opt-in Claude Code permission hook for imported local sessions.
+
 - Show the last authenticated device activity and pairing date in the linked devices dashboard.
 
 - Tailscale Funnel connection option and persistent external HTTPS origin for independently managed tunnels.
@@ -28,6 +30,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 - Use a black wearable background in dark themes for additive displays.
 
 ### Fixed
+
+- Preserve unread message indicators across wearable app reloads and improve common Markdown formatting.
 
 - Clear wearable notices when opening a chat and show new activity counts beside recent chats.
 
