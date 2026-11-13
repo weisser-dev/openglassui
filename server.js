@@ -222,7 +222,7 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/sessions/open') {
         const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || (!['codex','claude','kiro','opencode'].includes(input.agent)&&!isGenericAcp(cfg)))return json(res,400,{error:'Agent nicht unterstützt.'});
         const project=projectById(input.projectId || 'default'); const data=await (isGenericAcp(cfg)?createAcpClient(cfg).readSession(project.path,input.id):input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):input.agent==='opencode'?readOpenCodeSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);
-        const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',status:'completed',output:formatSession(data,input.agent),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
+        const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',...(typeof input.title==='string'&&input.title.trim()?{title:input.title.trim().slice(0,200)}:{}),status:'completed',output:formatSession(data,input.agent),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
         tasks.set(task.id,task);save();return json(res,201,exposed(task));
       }
       if (url.pathname === '/api/tasks') {

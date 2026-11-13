@@ -4,6 +4,17 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+### Added
+
+- A linked-device dashboard with a dedicated pairing action, device count and connection settings.
+- Browser-controlled live glasses preview and a separate fictional dashboard demo.
+- Local task-status charts and a wearable version indicator.
+
+### Changed
+
+- Resolve provider titles for imported sessions and reduce internal system-reminder noise in displayed history.
+- Use a black wearable background in dark themes for additive displays.
+
 ### Fixed
 
 - Load the latest Claude session messages and explicitly scroll the wearable view to the focused message.

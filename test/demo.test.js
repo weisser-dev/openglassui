@@ -17,3 +17,11 @@ test('demo controls restore iframe focus and activate the selected button once',
  const document={querySelector:()=>frame,querySelectorAll:()=>buttons};const context=vm.createContext({document});vm.runInContext(await readFile(new URL('../demo/demo.js',import.meta.url),'utf8'),context);
  onLoad();onFocus({target});doc.activeElement=null;handlers.ArrowDown();assert.equal(doc.activeElement,target);assert.deepEqual(keys,['ArrowDown']);doc.activeElement=null;handlers.Enter();assert.equal(clicks,1);assert.deepEqual(keys,['ArrowDown','Enter']);
 });
+test('dashboard demo keeps all agent, pairing and network actions in memory',async()=>{
+ const document={addEventListener(){}},window={};const context=vm.createContext({window,document,Response,URL,Date,JSON,location:{href:'https://example.test/openglassui/dashboard/index.html',origin:'https://example.test'}});
+ vm.runInContext(await readFile(new URL('../demo/dashboard-mock.js',import.meta.url),'utf8'),context);
+ const before=await (await window.fetch('/api/state')).json();assert.equal(before.agents.length,4);assert.equal(before.tasks.length,2);
+ await window.fetch('/api/tasks',{method:'POST',body:JSON.stringify({agentId:'codex',projectId:'default',prompt:'Example only'})});const after=await (await window.fetch('/api/state')).json();assert.equal(after.tasks.length,3);assert.match(after.tasks[0].output,/simulated/i);
+ const pairing=await(await window.fetch('/api/pairing',{method:'POST',body:'{}'})).json();assert.match(decodeURIComponent(pairing.qr),/DEMO ONLY/);
+ assert.equal((await window.fetch('https://example.org/api/state')).status,403);assert.equal((await window.fetch('/real-local-path')).status,403);
+});

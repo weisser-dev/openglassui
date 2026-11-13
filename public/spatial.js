@@ -16,3 +16,15 @@ function spatialTarget(current, candidates, direction) {
  }
  return best;
 }
+
+// The local preview sends the same keyboard events used by the wearable interface.
+if(typeof document!=='undefined' && document.querySelector('[data-simulator-controls]')){
+ const frame=document.querySelector('#simulator-frame');let lastFocused=null;
+ frame.addEventListener('load',()=>{lastFocused=null;frame.contentDocument?.addEventListener('focusin',event=>{lastFocused=event.target;});});
+ document.querySelectorAll('[data-simulator-controls] [data-key]').forEach(button=>button.addEventListener('click',()=>{
+  const doc=frame.contentDocument,win=frame.contentWindow;if(!doc||!win)return;
+  const current=lastFocused?.isConnected&&!lastFocused.disabled?lastFocused:doc.querySelector('#screen button, #screen textarea, #screen pre[tabindex]');if(current&&doc.activeElement!==current)current.focus({preventScroll:true});
+  const target=doc.activeElement||doc.body,key=button.dataset.key,event=new win.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true});target.dispatchEvent(event);if(key==='Enter'&&!event.defaultPrevented&&target.tagName==='BUTTON')target.click();
+ }));
+ document.querySelectorAll('[data-i18n]').forEach(item=>{item.textContent=window.openGlassI18n?.t(item.dataset.i18n)||item.dataset.i18n;});
+}

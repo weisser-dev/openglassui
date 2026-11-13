@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "version": "node scripts/sync-wearable-version.js"
   },
   "engines": {
     "node": ">=20"

@@ -7,3 +7,5 @@ config.json
 demo/wearable/
 demo/theme.js
 demo/setup-glasses.png
+
+demo/dashboard/

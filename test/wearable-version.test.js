@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';
+test('wearable footer version matches the package version',async()=>{const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));const html=await readFile(new URL('../public/glass.html',import.meta.url),'utf8');assert.ok(html.includes(`<span id="glass-version" hidden>v${pkg.version}</span>`));});

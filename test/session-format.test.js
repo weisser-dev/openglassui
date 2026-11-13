@@ -10,3 +10,8 @@ test('session imports show conversation text and omit tool payloads',()=>{
  assert.equal(formatSession([{type:'assistant',message:{content:'Hallo'}}],'kiro'),'KIRO\nHallo');
  assert.match(formatSession({turns:[]},'codex'),/Keine Textnachrichten/);
 });
+
+test('imported conversation hides system-reminder blocks',()=>{
+ const claude=[{type:'user',message:{content:'Hello\n<system-reminder>internal details</system-reminder>\nWorld'}}];
+ assert.equal(formatSession(claude,'claude'),'DU\nHello\n\nWorld');
+});

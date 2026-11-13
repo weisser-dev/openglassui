@@ -37,7 +37,7 @@ function createWearableNotices() {
    if(!task)return null;
    const decision=Boolean(task.pendingDecision && dismissed.get(task.id)!==task.pendingDecision.id);
    const status=decision?'Decision required':completed.get(task.id);
-   const project=task.projectName || 'Project',title=(task.prompt || 'Untitled task').replace(/\s+/g,' ').trim().slice(0,100);
+   const project=task.projectName || 'Project',title=(task.title || (task.prompt==='Importierte Sitzung'?'Imported session':task.prompt) || 'Untitled task').replace(/\s+/g,' ').trim().slice(0,100);
    return {taskId:task.id,decision,decisionId:decision?task.pendingDecision.id:null,text:`${task.agentName} · ${project} · ${translate(status)}\n${title}`};
   },
   dismiss(notice){if(!notice)return;if(notice.decision)dismissed.set(notice.taskId,notice.decisionId);else completed.delete(notice.taskId);}
