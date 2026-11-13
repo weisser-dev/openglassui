@@ -158,6 +158,10 @@ The gateway also serves Meta's `/.well-known/meta-wearables-manifest.json` and a
 - Remote task data and agent outputs pass through the HTTPS tunnel provider. Local task data is stored without encryption. Consider what code, prompts, and output the agent and tunnel provider can access.
 - Approvals are per request where supported. Existing agent configuration may already allow actions without a prompt. OpenGlassUI does not guarantee a separate confirmation for every action.
 
+### Wearable navigation
+
+The wearable home screen puts pending decisions and running tasks before recent chats and agents. Arrow keys (or supported band navigation) move focus; select activates an item and Back returns to the previous view. Composer actions are laid out horizontally, and the device provides its own dictation or handwriting composer. Review a dictated message and select Send explicitly. Long messages are split into navigable sections with speaker labels. Selecting an assistant section reads from that point onward when device speech is available; select again to pause or resume. Permissions show their tool details and require an explicit choice. Voice playback and the exact gesture behavior still require validation on the target glasses.
+
 ## Current technical gaps
 
 - **Physical device validation:** QR deep link, setup, layout, focus order, wristband gestures, text input, WebMCP, reconnection, and long-running use need testing on actual Meta Ray-Ban Display hardware.

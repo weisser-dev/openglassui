@@ -5,7 +5,7 @@ import vm from 'node:vm';
 test('wearable demo uses fictional state without companion access',async()=>{
  const window={};const context=vm.createContext({window,Date,JSON,Error});
  vm.runInContext(await readFile(new URL('../demo/wearable-mock.js',import.meta.url),'utf8'),context);
- assert.equal(window.OPENGLASS_DEMO,true);const state=await window.openGlassDemoApi('/api/state');assert.equal(state.agents.length,4);assert.equal(state.tasks.length,2);assert.equal((await window.openGlassDemoApi('/api/models?agent=codex')).models.length,2);assert.equal((await window.openGlassDemoApi('/api/models?agent=claude')).models.length,2);
+ assert.equal(window.OPENGLASS_DEMO,true);const state=await window.openGlassDemoApi('/api/state');assert.equal(state.agents.length,4);assert.equal(state.tasks.length,2);assert.ok(state.tasks[0].pendingDecision);await window.openGlassDemoApi('/api/tasks/demo-codex-chat/decision',{body:'{}'});assert.equal(state.tasks[0].pendingDecision,undefined);assert.equal((await window.openGlassDemoApi('/api/models?agent=codex')).models.length,2);assert.equal((await window.openGlassDemoApi('/api/models?agent=claude')).models.length,2);
  const result=await window.openGlassDemoApi('/api/tasks',{body:JSON.stringify({agentId:'codex',projectId:'demo-project',prompt:'Example'})});assert.ok(result.id);assert.equal(state.tasks[0].messages[1].text,'This is a simulated response. No agent was contacted.');
  await assert.rejects(window.openGlassDemoApi('/api/push/key'),/Unavailable/);
 });
