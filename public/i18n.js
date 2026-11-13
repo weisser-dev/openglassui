@@ -2,6 +2,16 @@
 // the interface is still being migrated and must not translate user content.
 (() => {
  const de={
+  'Tailscale Funnel · public, stable address':'Tailscale Funnel · öffentlich, feste Adresse',
+  'Existing HTTPS address · independently managed':'Bestehende HTTPS-Adresse · unabhängig verwaltet',
+  'Existing HTTPS address':'Bestehende HTTPS-Adresse',
+  'Use a stable HTTPS reverse proxy or named tunnel managed independently of OpenGlassUI.':'Verwende einen festen HTTPS-Reverse-Proxy oder benannten Tunnel, der unabhängig von OpenGlassUI verwaltet wird.',
+  'Forward only the gateway port to this address. Configure the proxy to start independently and enter its HTTPS origin below.':'Leite nur den Gateway-Port weiter. Richte den Proxy für einen unabhängigen Start ein und trage unten seine HTTPS-Adresse ein.',
+  'Cloudflare named tunnel instructions ↗':'Anleitung für benannte Cloudflare-Tunnel ↗',
+  'Public HTTPS using your Tailscale hostname. The address stays the same across restarts while the hostname and tailnet remain unchanged. Glasses compatibility is not verified.':'Öffentliches HTTPS über deinen Tailscale-Namen. Die Adresse bleibt bei Neustarts gleich, solange Gerätename und Tailnet unverändert bleiben. Die Kompatibilität mit der Brille ist nicht geprüft.',
+  'Install Tailscale, sign in, enable HTTPS and Funnel if prompted, then start the connection. The gateway is publicly reachable.':'Installiere Tailscale, melde dich an und aktiviere HTTPS und Funnel bei Aufforderung. Starte anschließend die Verbindung. Das Gateway ist öffentlich erreichbar.',
+  'Tailscale Funnel instructions ↗':'Anleitung für Tailscale Funnel ↗',
+
   'Scan this code with your iPhone and add the app in Meta AI. Treat the code like a password.':'Scanne den Code mit deinem iPhone und füge die App in Meta AI hinzu. Behandle ihn wie ein Passwort.',
   'Disconnect all devices':'Alle Geräte trennen','HTTPS address':'HTTPS-Adresse','Generate pairing code ↗':'Kopplungscode erzeugen ↗',
   '← Dashboard':'← Dashboard','DEVICE PREVIEW':'GERÄTEVORSCHAU','Glasses preview':'Brillen-Vorschau','This is the actual glasses interface with your local data. Use the buttons or arrow keys, Enter and Escape.':'Dies ist die echte Brillenoberfläche mit deinen lokalen Daten. Nutze die Tasten oder Pfeiltasten, Enter und Escape.','Select':'Auswählen','Uses your real local data and can control your agents. The preview cannot reproduce the optics, Meta composer or actual wristband behavior.':'Verwendet deine echten lokalen Daten und kann Agenten steuern. Optik, Meta-Eingabedialog und Armbandverhalten werden nicht exakt simuliert.',

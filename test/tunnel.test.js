@@ -16,3 +16,8 @@ test('Tailscale Serve exposes the gateway to the tailnet and stops its own foreg
 test('macOS uses the Tailscale app executable instead of an orphaning shell wrapper',()=>{
  let child;const manager=createTunnelManager({port:4174,platform:'darwin',exists:()=>true,spawnProcess:(command)=>{assert.equal(command,'/Applications/Tailscale.app/Contents/MacOS/Tailscale');child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};return child;}});manager.start('tailscale');manager.stop();
 });
+
+test('Tailscale Funnel starts a public stable hostname for the gateway',()=>{
+ let child;const manager=createTunnelManager({port:4174,platform:'linux',spawnProcess:(command,args)=>{assert.equal(command,'tailscale');assert.deepEqual(args,['funnel','http://127.0.0.1:4174']);child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};return child;}});
+ manager.start('tailscale-funnel');child.stdout.emit('data','Available on the internet: https://desktop.tail123.ts.net\n');assert.equal(manager.status().url,'https://desktop.tail123.ts.net');assert.equal(manager.status().status,'running');manager.stop();
+});

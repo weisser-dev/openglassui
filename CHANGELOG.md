@@ -8,6 +8,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Added
 
+- Tailscale Funnel connection option and persistent external HTTPS origin for independently managed tunnels.
+
 - A linked-device dashboard with a dedicated pairing action, device count and connection settings.
 - Browser-controlled live glasses preview and a separate fictional dashboard demo.
 - Local task-status charts and a wearable version indicator.

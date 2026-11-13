@@ -112,6 +112,12 @@ Optional environment variables:
 | `OPENGLASS_CONFIG` | Path to a JSON configuration file | `config.json` in the project directory |
 | `OPENGLASS_DATA_DIR` | Directory for local task data | `.openglass/` in the project directory |
 
+### Stable addresses across updates
+
+Quick Tunnels are temporary. To keep the same glasses address, choose **Tailscale Funnel** in setup, enable the provider's HTTPS and Funnel prompts, and enable connection auto-start. Funnel publishes the gateway to the internet; the hostname remains the same while the device name and tailnet name remain unchanged. Test connectivity on the actual glasses: Funnel support on Meta glasses has not yet been verified. Tailscale Serve is private and may not be reachable by the glasses even when the phone can reach it. The managed tunnel reconnects when OpenGlassUI restarts; a restart causes a brief outage.
+
+Alternatively, create a [named Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/create-local-tunnel/) or another independently managed HTTPS reverse proxy. Route only `http://127.0.0.1:4174` (or your configured gateway port), run it as its own service, and choose **Existing HTTPS address** in setup. Enter its HTTPS origin; OpenGlassUI saves it with the local setup and will not manage or stop that independent service. Do not expose port 4173. Changing from an old hostname requires one new pairing; the same stable origin and preserved device data keep pairing across ordinary updates. Local network access similarly requires a reachable HTTPS endpoint and a certificate trusted by the glasses; LAN-only connectivity is not yet verified.
+
 The tunnel provider and optional automatic-start preference are stored in local setup. Automatic startup is off by default and starts only after completed setup when explicitly enabled. Cloudflare Quick Tunnel addresses change when restarted; update or re-pair the glasses app as needed. The Homebrew button is available only on macOS when Homebrew is in the companion’s PATH.
 
 Both the admin service and gateway bind to `127.0.0.1`, not the local network. Tasks and their output are written to `.openglass/tasks.json` by default, including prompts and potentially sensitive agent output. Data is not encrypted at rest. Running tasks are marked interrupted after a server restart.
