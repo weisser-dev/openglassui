@@ -2,6 +2,8 @@
 // the interface is still being migrated and must not translate user content.
 (() => {
  const de={
+  'Theme':'Design','Enter a number between':'Gib eine Zahl in diesem Bereich ein:','Suggestions run separately through the Claude Code SDK, without project tools or a saved session. The selected provider receives the bounded context.':'Vorschläge laufen separat über das Claude Code SDK, ohne Projektwerkzeuge oder gespeicherte Sitzung. Der ausgewählte Anbieter erhält den begrenzten Kontext.',
+
   'Connection lost':'Verbindung unterbrochen',
 
   'Cloudflare Quick Tunnel (temporary, not recommended)':'Cloudflare Quick Tunnel (temporär, nicht empfohlen)','Tailscale Funnel (public, stable address)':'Tailscale Funnel (öffentlich, feste Adresse)','ngrok Free (account required)':'ngrok Free (Konto erforderlich)','Tailscale Serve (private tailnet)':'Tailscale Serve (privates Tailnet)','Remove this project from OpenGlassUI? Files are not deleted, and older tasks may need the project re-added.':'Projekt aus OpenGlassUI entfernen? Die Dateien bleiben erhalten. Frühere Aufgaben benötigen gegebenenfalls eine erneute Einrichtung.',

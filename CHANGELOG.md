@@ -27,6 +27,10 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Changed
 
+- Request three reply suggestions in a validated JSON schema, using the user’s language.
+
+- Align dashboard branding and header controls, simplify numeric context inputs, and allow larger suggestion-context limits.
+
 - Refresh settings, device-preview and public-site styling with theme-aware scrollbars and clearer loading states.
 - Include bounded recent tool activity when available and show animated progress during managed runs.
 
