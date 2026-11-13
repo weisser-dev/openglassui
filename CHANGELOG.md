@@ -4,6 +4,11 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep dictated drafts and update the Send control when a device composer changes text without sending an input event.
+- Explain when a Codex conversation is already being written by another client.
+
 ## [0.1.1] - 2026-11-13
 
 ### Added

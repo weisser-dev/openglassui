@@ -63,3 +63,6 @@
 
 .bubble.outgoing:focus-visible{outline:3px solid #c4ff77;outline-offset:2px}
 [data-theme=light] .bubble.outgoing:focus-visible{outline-color:#256c36}
+.composer-wrap{position:sticky;bottom:0;z-index:2;background:#0d130d}.composer-wrap .composer-bar{position:static;margin-bottom:0}
+[data-theme=hacker] .composer-wrap{background:#020b04}[data-theme=dark] .composer-wrap{background:#101217}[data-theme=light] .composer-wrap{background:#f3f7f0}
+.composer-error{color:#f7d8cd;font-size:13px;line-height:1.4;margin:0;padding:8px 0}.composer-error[hidden]{display:none}

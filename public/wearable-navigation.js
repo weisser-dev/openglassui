@@ -25,3 +25,30 @@ function focusWearableScreen(doc, page, hasDecision) {
   if (!target) target = doc.querySelector(page === 'chats' ? '#screen textarea' : '#screen button, #screen textarea, #screen pre[tabindex]');
   target?.focus({preventScroll:false});
 }
+// Some device composers update a text field without dispatching an input event.
+function attachWearableComposer(input, send, drafts, key, win) {
+ let sending=false;
+ function sync() {
+  drafts.set(key,input.value);
+  send.disabled=sending||!input.value.trim();
+ }
+ function focusSend() {
+  sync();
+  if(input.value.trim())win.setTimeout(()=>{if(send.isConnected&&!send.disabled)send.focus();},0);
+ }
+ function poll() {
+  if(!input.isConnected){win.clearInterval(timer);return;}
+  if(drafts.get(key)!==input.value)sync();
+ }
+ input.addEventListener('input',sync);
+ input.addEventListener('change',focusSend);
+ input.addEventListener('blur',sync);
+ input.addEventListener('focus',sync);
+ const timer=win.setInterval(poll,250);
+ sync();
+ return {
+  sync,
+  setSending(value){sending=value;sync();},
+  clear(){input.value='';drafts.delete(key);send.disabled=true;},
+ };
+}
