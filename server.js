@@ -77,6 +77,7 @@ function local(req) { return req.socket.localPort===port && [`127.0.0.1:${port}`
 function localOrigin(req) { return req.headers.origin === `http://127.0.0.1:${port}` || req.headers.origin === `http://localhost:${port}`; }
 function deviceForToken(token) {if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))return null;const hash=hashToken(token);return [...devices.values()].find(device=>device.tokenHash===hash) || null;}
 function authorizedToken(token) {return Boolean(deviceForToken(token));}
+function markDeviceSeen(device){if(!device)return;const now=Date.now();if(now-(Date.parse(device.lastSeenAt)||0)<60000)return;device.lastSeenAt=new Date(now).toISOString();void saveDevices().catch(error=>console.error('Could not save device activity:',error.message));}
 function requestDevice(req){const header=req.headers.authorization || '';return header.startsWith('Bearer ')?deviceForToken(header.slice(7)):null;}
 function authorized(req) { const header=req.headers.authorization || '';return header.startsWith('Bearer ') && authorizedToken(header.slice(7)); }
 // Multiple agent requests can arrive concurrently. Never auto-approve or silently
@@ -103,32 +104,33 @@ function updateTaskEvent(task,event){
  changed();
 }
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
-function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), model) {
+function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), model, fromPairedDevice=false) {
   const workspace = project.path;
   const args = oldTask && !['kiro','opencode'].includes(agent.id) && !isGenericAcp(agent) ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
   if ((!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string')) throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
   const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
+  if(fromPairedDevice)task.pairedRequests=(task.pairedRequests||0)+1;let countedCompletion=false;const countCompletion=()=>{if(fromPairedDevice&&!countedCompletion&&task.status==='completed'){task.pairedCompleted=(task.pairedCompleted||0)+1;countedCompletion=true;}};
   startConversationTurn(task,prompt.trim());task.status = 'running'; task.lastMessageAt=new Date().toISOString(); task.trackedMessages=(task.trackedMessages || 0)+1; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
   tasks.set(task.id, task); save();
   if (['kiro','opencode'].includes(agent.id) || isGenericAcp(agent)) {
     const launch=isGenericAcp(agent)?options=>createAcpClient(agent).run(options):runKiro;const handle=launch({command:agent.command,args:agent.acpArgs || (isGenericAcp(agent)?agent.args:agent.id==='opencode'?['acp']:['acp','--agent-engine','v3']),agentName:agent.name,workspace,prompt,model,sessionId:oldTask?.sessionId,
       onModels(option){task.models=option.models;if(typeof option.current==='string')task.model=option.current;save();},onSession(id){task.sessionId=id;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage={...(task.usage || {}),provider:'kiro',[usage.kind==='context_usage'?'context':'turn']:usage};save();},
       onDecision(decision){return queueDecision(task,decision);},
-      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
+      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);countCompletion();save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'codex') {
     const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,model,
       onSession(id,actualModel){task.sessionId=id;if(actualModel)task.model=actualModel;save();},onModel(actualModel){task.model=actualModel;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage=usage;save();},
       onDecision(decision){return queueDecision(task,decision);},
-      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
+      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);countCompletion();save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'claude') {
     const handle = runClaude({prompt, workspace, sessionId:oldTask?.sessionId,model,
       onModels(models){task.models=Array.isArray(models)?models.filter(item=>typeof item.value==='string').map(item=>({id:item.value,name:item.displayName||item.value})):[];save();},onMessage(message) { if(message.session_id) task.sessionId=message.session_id; if(message.type==='system'&&message.subtype==='init'&&message.model)task.model=message.model; if(message.type==='assistant') { const text=(message.message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n'); if(text){task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text+'\n');task.output=(task.output+text+'\n').slice(-100000);} } if(message.type==='result') { if(message.usage || message.total_cost_usd!==undefined) task.usage={provider:'claude',usage:message.usage,costUsd:message.total_cost_usd}; if(message.is_error) task.status='failed'; } changed(); },
       onDecision(decision,signal) { return queueDecision(task,decision,signal); },
-      onDone(error) { if(error) {appendTranscriptText(task,error.message);task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); }
+      onDone(error) { if(error) {appendTranscriptText(task,error.message);task.output+=`\n${error.message}`; if(task.status!=='stopped')task.status='failed';} else if(task.status!=='failed'&&task.status!=='stopped')task.status='completed'; delete task.process; cancelDecisions(task); countCompletion(); save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); }
     }); task.process=handle; return task;
   }
   const child = spawn(agent.command, args, { cwd:workspace, shell:false, stdio:['pipe','pipe','pipe'] }); task.process = child;
@@ -137,7 +139,7 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), 
   child.stdout.on('data', chunk => { const str = chunk.toString(); append(str); pending += str; const lines = pending.split('\n'); pending = lines.pop(); for (const line of lines) { try { const event = JSON.parse(line); if (agent.id === 'codex' && event.type === 'thread.started' && /^[0-9a-f-]{36}$/i.test(event.thread_id || '')) task.sessionId = event.thread_id; if (agent.id === 'claude' && /^[0-9a-f-]{36}$/i.test(event.session_id || '')) task.sessionId = event.session_id; } catch {} } });
   child.stderr.on('data', append); child.stdin.on('error', () => {});
   child.on('error', err => { append(`\n${err.message}`); task.status = 'failed'; save(); });
-  child.on('close', code => { if (task.status !== 'stopped' && task.status !== 'failed') task.status = code === 0 ? 'completed' : 'failed'; delete task.process; save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); });
+  child.on('close', code => { if (task.status !== 'stopped' && task.status !== 'failed') task.status = code === 0 ? 'completed' : 'failed'; delete task.process; countCompletion(); save(); if(task.status==='completed'||task.status==='failed')notifyPush(task.status); });
   child.stdin.end(prompt.trim() + '\n');
   return task;
 }
@@ -149,17 +151,18 @@ const handler = async (req, res) => {
       if (req.headers['content-type'] !== 'application/json') return json(res,403,{error:'Zugriff verweigert.'});
       const input = await body(req); const entry = pairings.get(input.code); pairings.delete(input.code);
       if (!entry || entry < Date.now()) return json(res,401,{error:'Kopplungscode ungültig oder abgelaufen.'});
-      const token = randomBytes(32).toString('base64url');const device={id:randomUUID(),name:'Brille',createdAt:new Date().toISOString(),tokenHash:hashToken(token)};devices.set(device.id,device);try{await saveDevices();}catch(error){devices.delete(device.id);throw error;}return json(res,200,{token});
+      const token = randomBytes(32).toString('base64url');const device={id:randomUUID(),name:'Device',createdAt:new Date().toISOString(),tokenHash:hashToken(token)};devices.set(device.id,device);try{await saveDevices();}catch(error){devices.delete(device.id);throw error;}return json(res,200,{token});
     }
     if (url.pathname.startsWith('/api/')) {
       if (!isLocal && !authorized(req)) return json(res,401,{error:'Bitte zuerst koppeln.'});
+      if(!isLocal)markDeviceSeen(requestDevice(req));
       if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || (!['claude','codex','kiro','opencode'].includes(agent)&&!isGenericAcp(cfg))) return json(res,400,{error:'Agent nicht unterstützt.'}); const sessions=await (isGenericAcp(cfg)?createAcpClient(cfg).listSessions(project.path):agent==='kiro'?listKiroSessions(project.path,cfg.command):agent==='opencode'?listOpenCodeSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{sessions}); }
       const sessionMatch=url.pathname.match(/^\/api\/sessions\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/i);
       if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg || (!['codex','claude','kiro','opencode'].includes(cfg.id)&&!isGenericAcp(cfg)))return json(res,404,{error:'Agent not configured or does not support session browsing.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (isGenericAcp(cfg)?createAcpClient(cfg).readSession(project.path,sessionMatch[2]):sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):sessionMatch[1]==='opencode'?readOpenCodeSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
       if (req.method === 'GET' && url.pathname === '/api/models') {const agent=agents.find(a=>a.id===url.searchParams.get('agent'));if(agent&&(agent.id==='claude'||['kiro','opencode'].includes(agent.id)||isGenericAcp(agent))){const task=tasks.get(url.searchParams.get('task'));return json(res,200,{models:task?.agentId===agent.id?task.models||[]:[],supported:Boolean(task?.agentId===agent.id&&task.models?.length)});}if(!agent || agent.id!=='codex')return json(res,200,{models:[],supported:false});const models=await listCodexModels(agent.command);assertCurrentAccess(req);return json(res,200,{models,supported:true});}
       if (req.method === 'GET' && url.pathname === '/api/push/status') { const device=requestDevice(req);if(!device)return json(res,403,{error:'Only paired devices can check background alerts.'});return json(res,200,{enabled:Boolean(device.push)}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
-      if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,push,pushDelivery})=>({id,name,createdAt,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
+      if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,lastSeenAt,push,pushDelivery})=>({id,name,createdAt,lastSeenAt:lastSeenAt||null,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
       if (req.method === 'GET' && url.pathname === '/api/autostart') { if(!isLocal)return json(res,403,{error:'Available locally only.'}); return json(res,200,await autostart.status()); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel/install-status') {if(!isLocal)return json(res,403,{error:'Available locally only.'});return json(res,200,{...tunnelInstaller.status(),platform:process.platform,brewAvailable:await executableAvailable('brew'),installed:await executableAvailable('cloudflared')});}
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
@@ -229,7 +232,7 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/tasks') {
         const input=await body(req), agent=agents.find(a=>a.id===input.agentId);
         if (!agent || !publicTaskInput(input)) return json(res,400,{error:'Bitte Agent und gültige Aufgabe auswählen.'});
-        if(input.model!==undefined&&(!['codex','claude'].includes(agent.id)||typeof input.model!=='string'||!/^[-a-zA-Z0-9_.:]{1,120}$/.test(input.model)))return json(res,400,{error:'Invalid or unsupported model.'});const project=projectById(input.projectId || 'default'); return json(res,201,exposed(run(agent,input.prompt,null,project,input.model)));
+        if(input.model!==undefined&&(!['codex','claude'].includes(agent.id)||typeof input.model!=='string'||!/^[-a-zA-Z0-9_.:]{1,120}$/.test(input.model)))return json(res,400,{error:'Invalid or unsupported model.'});const project=projectById(input.projectId || 'default'); return json(res,201,exposed(run(agent,input.prompt,null,project,input.model,!isLocal)));
       }
       const decisionMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/decision$/);
       if (decisionMatch) {
@@ -251,7 +254,7 @@ const handler = async (req, res) => {
         const input=await body(req), agent=agents.find(a=>a.id===task.agentId);
         if (task.process) return json(res,409,{error:'Der vorherige Agent wird noch beendet. Bitte gleich erneut versuchen.'});
         if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || ['kiro','opencode'].includes(agent?.id) || isGenericAcp(agent)) || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
-        if(input.model!==undefined){const validId=typeof input.model==='string'&&input.model.length>0&&input.model.length<=200;const knownAcp=(['kiro','opencode'].includes(agent.id)||isGenericAcp(agent))&&task.models?.some(item=>item.id===input.model);if(!validId||(!['codex','claude'].includes(agent.id)&&!knownAcp))return json(res,400,{error:'Invalid or unsupported model.'});}return json(res,200,exposed(run(agent,input.prompt,task,undefined,input.model)));
+        if(input.model!==undefined){const validId=typeof input.model==='string'&&input.model.length>0&&input.model.length<=200;const knownAcp=(['kiro','opencode'].includes(agent.id)||isGenericAcp(agent))&&task.models?.some(item=>item.id===input.model);if(!validId||(!['codex','claude'].includes(agent.id)&&!knownAcp))return json(res,400,{error:'Invalid or unsupported model.'});}return json(res,200,exposed(run(agent,input.prompt,task,undefined,input.model,!isLocal)));
       }
       return json(res,404,{error:'Nicht gefunden.'});
     }
@@ -269,10 +272,10 @@ for(const listener of [server,gateway])listener.on('upgrade',(req,socket,head)=>
   if(req.url!=='/api/events' || eventServer.clients.size>=100){socket.destroy();return;}
   eventServer.handleUpgrade(req,socket,head,ws=>{
     ws.isLocal=local(req) && localOrigin(req);let authenticated=false;const deadline=setTimeout(()=>ws.close(1008,'Authentifizierung erforderlich'),5000);
-    ws.on('error',()=>{});ws.on('close',()=>{clearTimeout(deadline);sockets.delete(ws);});
+    ws.on('error',()=>{});ws.on('pong',()=>{if(authenticated&&!ws.isLocal)markDeviceSeen(deviceForToken(ws.token));});ws.on('close',()=>{clearTimeout(deadline);sockets.delete(ws);});
     ws.on('message',raw=>{if(authenticated)return;let data;try{data=JSON.parse(raw.toString())}catch{ws.close(1008,'Ungültige Anmeldung');return;}
       if(!data || typeof data!=='object' || Array.isArray(data)){ws.close(1008,'Ungültige Anmeldung');return;}
-      if(!ws.isLocal && !authorizedToken(data.token)){ws.close(1008,'Zugriff verweigert');return;}authenticated=true;ws.token=data.token;clearTimeout(deadline);sockets.add(ws);ws.send(JSON.stringify({revision}));
+      if(!ws.isLocal && !authorizedToken(data.token)){ws.close(1008,'Zugriff verweigert');return;}authenticated=true;ws.token=data.token;if(!ws.isLocal)markDeviceSeen(deviceForToken(ws.token));clearTimeout(deadline);sockets.add(ws);ws.send(JSON.stringify({revision}));
     });
   });
 });

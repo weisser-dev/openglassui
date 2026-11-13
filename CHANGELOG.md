@@ -8,6 +8,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Added
 
+- Show the last authenticated device activity and pairing date in the linked devices dashboard.
+
 - Tailscale Funnel connection option and persistent external HTTPS origin for independently managed tunnels.
 
 - A linked-device dashboard with a dedicated pairing action, device count and connection settings.
@@ -15,6 +17,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 - Local task-status charts and a wearable version indicator.
 
 ### Changed
+
+- Replace dashboard task controls with project management and a chart of requests and successful completions from paired devices. Group connection, setup and glasses guidance in a settings dialog.
 
 - Discourage new Cloudflare Quick Tunnel selections because their addresses change on restart.
 

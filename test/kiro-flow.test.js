@@ -48,7 +48,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{const msg=JSON.
   assert.equal((await remote(`/api/tasks/${id}/decision`,{decisionId:firstId,type:'choice',optionId:'once'})).status,409);
   slow.end(task.pendingDecision.id+'","type":"choice","optionId":"reject2"}');assert.equal(await slowResult,200);
   for(let i=0;i<100;i++){task=(await (await fetch(gateway+'/api/state',{headers:{Authorization:`Bearer ${token}`}})).json()).tasks.find(t=>t.id===id);if(task.status!=='running')break;await delay(25);}
-  assert.equal(task.status,'completed');assert.match(task.output,/Result: once,reject2/);assert.ok(revisions>=2,'the paired device should receive change events');
+  assert.equal(task.status,'completed');assert.equal(task.pairedRequests,1);assert.equal(task.pairedCompleted,1);assert.match(task.output,/Result: once,reject2/);assert.ok(revisions>=2,'the paired device should receive change events');
   const repeated=await remote(`/api/tasks/${id}/decision`,{decisionId:'stale',type:'choice',optionId:'once'});assert.equal(repeated.status,409);
  }finally{socket?.terminate();if(child.exitCode===null && child.signalCode===null){const exited=once(child,'exit');child.kill('SIGTERM');await exited;}await rm(dir,{recursive:true,force:true});}
 });

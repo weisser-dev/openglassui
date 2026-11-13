@@ -46,6 +46,8 @@ Desktop dashboard ── localhost admin ──┐
 Glasses ── HTTPS tunnel ── gateway ────┘                 (Codex / Claude / Kiro / other CLI)
 ```
 
+The dashboard counts requests submitted by paired devices and successful completions after this feature was added. It cannot distinguish a paired phone from glasses, and earlier activity is not reconstructed. Device last activity records authenticated requests or an active connection, not confirmed physical presence.
+
 OpenGlassUI is a control surface and local companion: the connected agent owns its model, provider authentication, tools and permission policy. OpenGlassUI launches agents locally and currently stores configuration, paired-device records, task prompts, outputs and conversation history on the computer; it is not a config-only proxy. The glasses page communicates with that companion through a separately configured HTTPS tunnel. The QR code is an installation and pairing link; it does not create the tunnel. The dashboard can start an installed Cloudflare, ngrok, or Tailscale Serve client on demand. A separate gateway listener is used for remote access.
 
 ## Requirements

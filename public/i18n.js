@@ -2,6 +2,8 @@
 // the interface is still being migrated and must not translate user content.
 (() => {
  const de={
+  'Settings':'Einstellungen','Setup':'Einrichtung','Glasses guide':'Brillenanleitung','Review agents, projects, connection and startup settings.':'Agenten, Projekte, Verbindung und Startoptionen überprüfen.','YOUR WORKSPACE':'DEIN ARBEITSBEREICH','Manage projects':'Projekte verwalten','DEVICE ACTIVITY':'GERÄTEAKTIVITÄT','Activity from paired devices':'Aktivität gekoppelter Geräte','Requests':'Anfragen','Counts begin with this update. Paired phones and glasses are counted together; older activity is not included.':'Die Zählung beginnt mit diesem Update. Gekoppelte Handys und Brillen werden gemeinsam gezählt; frühere Aktivitäten sind nicht enthalten.',
+  'Last active':'Zuletzt aktiv','Not recorded yet':'Noch nicht erfasst','Paired':'Gekoppelt',
   'Cloudflare Quick Tunnel · temporary · not recommended':'Cloudflare Quick Tunnel · temporär · nicht empfohlen',
   'Tailscale Funnel · public, stable address':'Tailscale Funnel · öffentlich, feste Adresse',
   'Existing HTTPS address · independently managed':'Bestehende HTTPS-Adresse · unabhängig verwaltet',
