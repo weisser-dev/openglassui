@@ -15,6 +15,7 @@ import { createAcpClient } from './agent-client.js';
 import { createCloudflaredInstaller } from './tunnel-installer.js';
 import { createPushService } from './push.js';
 import { formatSession, formatSessionMessages } from './session-format.js';
+import { generateReplySuggestions } from './reply-suggestions.js';
 import { createSessionMonitor } from './session-monitor.js';
 import { readProjectRepository } from './project-metadata.js';
 import { startConversationTurn, appendAssistantText, appendTranscriptText } from './conversation.js';
@@ -243,6 +244,8 @@ const handler = async (req, res) => {
         if (!agent || !publicTaskInput(input)) return json(res,400,{error:'Bitte Agent und gültige Aufgabe auswählen.'});
         if(input.model!==undefined&&(!['codex','claude'].includes(agent.id)||typeof input.model!=='string'||!/^[-a-zA-Z0-9_.:]{1,120}$/.test(input.model)))return json(res,400,{error:'Invalid or unsupported model.'});const project=projectById(input.projectId || 'default'); return json(res,201,exposed(run(agent,input.prompt,null,project,input.model,!isLocal)));
       }
+      const suggestionsMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/suggestions$/);
+      if(suggestionsMatch){await body(req);const task=tasks.get(suggestionsMatch[1]);if(!task)return json(res,404,{error:'Task not found.'});if(task.agentId!=='claude')return json(res,400,{error:'Reply suggestions are currently available for Claude Code only.'});const rows=Array.isArray(task.messages)?task.messages:task.snapshotMessages;try{const suggestions=await generateReplySuggestions(rows,{workspace:projectById(task.projectId||'default').path});assertCurrentAccess(req);return json(res,200,{suggestions});}catch{return json(res,503,{error:'Could not generate suggestions. Check Claude authentication and conversation history.'});}}
       const decisionMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/decision$/);
       if (decisionMatch) {
         const input=await body(req);const task=tasks.get(decisionMatch[1]), resolve=decisions.get(decisionMatch[1])?.[0]?.settle, pending=task?.pendingDecision;

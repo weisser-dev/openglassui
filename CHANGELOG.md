@@ -8,6 +8,9 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Added
 
+- Hide recent chats locally via a directional action and restore them in settings.
+- Generate optional, tool-free Claude reply suggestions from the latest exchange.
+
 - Experimental opt-in Claude Code permission hook for imported local sessions.
 
 - Show the last authenticated device activity and pairing date in the linked devices dashboard.
@@ -30,6 +33,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 - Use a black wearable background in dark themes for additive displays.
 
 ### Fixed
+
+- Reuse locally cached provider session titles to avoid temporary placeholder titles.
 
 - Preserve unread message indicators across wearable app reloads and improve common Markdown formatting.
 

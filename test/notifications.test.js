@@ -49,3 +49,7 @@ test('unread messages survive a reload and clear when the chat opens',()=>{
  task.snapshotMessages.push({role:'assistant',text:'new'});const reloaded=context.createWearableNotices(storage);reloaded.update(null,[task]);assert.equal(reloaded.count(task),1);assert.ok(!JSON.stringify([...values]).includes('new'));
  reloaded.open(task);assert.equal(context.createWearableNotices(storage).count(task),0);
 });
+test('two views on the same origin share one unread count and read state',()=>{
+ const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value)};
+ const task={id:'a',agentId:'claude',sessionId:'s',snapshotMessages:[{role:'assistant',text:'first'}]};const a=context.createWearableNotices(storage),b=context.createWearableNotices(storage);a.update(null,[task]);b.update(null,[task]);task.snapshotMessages.push({role:'assistant',text:'second'});a.update(null,[task]);b.update(null,[task]);assert.equal(a.count(task),1);assert.equal(b.count(task),1);a.open(task);b.reload();assert.equal(b.count(task),0);
+});

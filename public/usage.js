@@ -11,15 +11,15 @@ window.renderUsageOverview=function(container,tasks){const items=tasks.filter(ta
 
 // Session titles are looked up from each provider; imported snapshots retain their origin marker.
 window.createSessionTitleResolver=function(api,onUpdate=()=>{}){
- const cache=new Map(),known=new Map(),pending=new Set(),retryAfter=new Map();
+ const cache=new Map(),known=new Map(),pending=new Set(),retryAfter=new Map(),storageKey='openglass-session-titles-v1';try{const saved=JSON.parse(window.localStorage?.getItem(storageKey)||'[]');if(Array.isArray(saved))for(const entry of saved.slice(-500))if(Array.isArray(entry)&&typeof entry[0]==='string'&&typeof entry[1]==='string')known.set(entry[0],entry[1]);}catch{}const persist=()=>{try{window.localStorage?.setItem(storageKey,JSON.stringify([...known.entries()].slice(-500)));}catch{}};
  function key(task){return `${task.agentId}\u0000${task.projectId||'default'}`;}
  function enrich(tasks){
-  for(const task of tasks){if(task.prompt!=='Importierte Sitzung'||!task.sessionId||task.title)continue;const group=key(task),direct=known.get(`${group}\u0000${task.sessionId}`),names=cache.get(group);if(direct){task.title=direct;continue;}if(names){const title=names.get(task.sessionId);if(title)task.title=title;continue;}if(pending.has(group)||Date.now()<(retryAfter.get(group)||0))continue;
+  for(const task of tasks){if(task.prompt!=='Importierte Sitzung'||!task.sessionId||task.title)continue;const group=key(task),direct=known.get(`${group}\u0000${task.sessionId}`),names=cache.get(group);if(direct)task.title=direct;if(names){const title=names.get(task.sessionId);if(title)task.title=title;continue;}if(pending.has(group)||Date.now()<(retryAfter.get(group)||0))continue;
    pending.add(group);const path=`/api/sessions?agent=${encodeURIComponent(task.agentId)}&projectId=${encodeURIComponent(task.projectId||'default')}`;
-   Promise.resolve().then(()=>api(path)).then(data=>{const entries=(data.sessions||[]).filter(item=>typeof item.id==='string'&&typeof item.title==='string'&&item.title.trim()).map(item=>[item.id,item.title.trim().slice(0,200)]);cache.set(group,new Map(entries));onUpdate();}).catch(()=>{retryAfter.set(group,Date.now()+30000);}).finally(()=>pending.delete(group));
+   Promise.resolve().then(()=>api(path)).then(data=>{const entries=(data.sessions||[]).filter(item=>typeof item.id==='string'&&typeof item.title==='string'&&item.title.trim()).map(item=>[item.id,item.title.trim().slice(0,200)]);cache.set(group,new Map(entries));for(const [id,title] of entries)known.set(`${group}\u0000${id}`,title);persist();onUpdate();}).catch(()=>{retryAfter.set(group,Date.now()+30000);}).finally(()=>pending.delete(group));
   }
  }
- return {enrich,remember(agentId,projectId,sessionId,title){if(typeof title!=='string'||!title.trim())return;const group=`${agentId}\u0000${projectId||'default'}`;known.set(`${group}\u0000${sessionId}`,title.trim().slice(0,200));}};
+ return {enrich,remember(agentId,projectId,sessionId,title){if(typeof title!=='string'||!title.trim())return;const group=`${agentId}\u0000${projectId||'default'}`;known.set(`${group}\u0000${sessionId}`,title.trim().slice(0,200));persist();}};
 };
 window.cleanImportedTranscript=function(text){return String(text||'').replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi,'').replace(/\n{3,}/g,'\n\n').trim();};
 window.taskDisplayTitle=function(task,fallback='Imported session'){return task.title||(task.prompt&&task.prompt!=='Importierte Sitzung'?task.prompt:fallback);};

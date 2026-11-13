@@ -114,6 +114,12 @@ Optional environment variables:
 | `OPENGLASS_CONFIG` | Path to a JSON configuration file | `config.json` in the project directory |
 | `OPENGLASS_DATA_DIR` | Directory for local task data | `.openglass/` in the project directory |
 
+### Wearable chat shortcuts
+
+On a recent chat, swipe left to reveal the crossed-out eye, then select it to hide the chat from the home screen. The session itself remains available under its agent and project. Restore hidden chats under Settings → Recent chats. Long-press detection depends on the device host and is not required. These preferences and cached session titles are stored locally in the web app's origin and do not automatically transfer to another URL or device.
+
+For a Claude Code chat, **Suggest replies** sends the most recent user message and agent answer to a separate, tool-free Claude turn. This may use your Claude account or incur provider charges. Swipe left or right through the results and select one to place it in the draft; sending still requires explicit confirmation. Suggestions are not supported for other agents yet and are not generated automatically.
+
 ### External Claude Code permission forwarding (experimental)
 
 OpenGlassUI can forward `PermissionRequest` hooks from local Claude Code sessions that have already been imported. On macOS or Linux, enable it explicitly on the machine running Claude Code with `openglassui --enable-claude-hook` (or `node bin/openglassui.js --enable-claude-hook` from a checkout). This merges a hook into your user-level Claude settings, affecting local Claude Code sessions; it does not change permission rules or automatically approve requests. Review `~/.claude/settings.json` and remove the OpenGlassUI hook there to disable it. If `CLAUDE_CONFIG_DIR` is set, that directory is used instead. For a nondefault dashboard port set `OPENGLASS_PORT` for the Claude process.

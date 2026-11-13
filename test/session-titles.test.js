@@ -13,3 +13,7 @@ test('provider history becomes separate chat bubbles while tool and reminder con
  const value=window.formatProviderSession([{type:'user',message:{content:'Hello <system-reminder>internal</system-reminder>'}},{type:'assistant',message:{content:[{type:'tool_use',input:'secret'},{type:'text',text:'Hello back'}]}}]);
  assert.deepEqual(JSON.parse(JSON.stringify(value)),[{role:'user',text:'Hello'},{role:'assistant',text:'Hello back'}]);
 });
+test('cached session titles appear immediately after a reload',async()=>{
+ const saved=new Map();window.localStorage={getItem:key=>saved.get(key)||null,setItem:(key,value)=>saved.set(key,value)};
+ try{let done;const first=window.createSessionTitleResolver(async()=>({sessions:[{id:'a',title:'Cached title'}]}),()=>done());const task={agentId:'claude',projectId:'p',sessionId:'a',prompt:'Importierte Sitzung'};const loaded=new Promise(resolve=>done=resolve);first.enrich([task]);await loaded;const next={...task};delete next.title;const second=window.createSessionTitleResolver(async()=>({sessions:[]}));second.enrich([next]);assert.equal(next.title,'Cached title');}finally{delete window.localStorage;}
+});
