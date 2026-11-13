@@ -38,3 +38,13 @@ window.formatProviderSession=function(session){
  else if(Array.isArray(session?.turns)){for(const turn of session.turns)for(const item of turn.items||[]){if(item.type==='userMessage')add('user',item.content);else if(item.type==='agentMessage')add('assistant',item.text);}}
  return result.slice(-100);
 };
+// Claude records slash commands in XML-like message envelopes. Treat the body as text.
+window.parseWearableCommand=function(text){
+ const value=String(text||'').trim();if(!/^<command-(?:message|name|args)>/i.test(value))return null;
+ const read=name=>value.match(new RegExp(`<command-${name}>([\\s\\S]*?)<\\/command-${name}>`,'i'))?.[1]?.trim()||'';
+ const raw=read('name')||read('message');if(!/^\/?[a-z0-9][a-z0-9_:.\/-]{0,79}$/i.test(raw))return null;
+ const name=raw.startsWith('/')?raw:`/${raw}`;
+ const body=value.replace(/<command-(?:message|name)>[\s\S]*?<\/command-(?:message|name)>/gi,'').replace(/<\/?command-args>/gi,'').trim();
+ return {name,body};
+};
+window.isWearableInterruption=function(text){return /^\s*\[Request interrupted by user(?: for tool use)?\]\s*$/i.test(String(text||''));};

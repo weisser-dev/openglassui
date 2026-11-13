@@ -17,3 +17,7 @@ test('cached session titles appear immediately after a reload',async()=>{
  const saved=new Map();window.localStorage={getItem:key=>saved.get(key)||null,setItem:(key,value)=>saved.set(key,value)};
  try{let done;const first=window.createSessionTitleResolver(async()=>({sessions:[{id:'a',title:'Cached title'}]}),()=>done());const task={agentId:'claude',projectId:'p',sessionId:'a',prompt:'Importierte Sitzung'};const loaded=new Promise(resolve=>done=resolve);first.enrich([task]);await loaded;const next={...task};delete next.title;const second=window.createSessionTitleResolver(async()=>({sessions:[]}));second.enrich([next]);assert.equal(next.title,'Cached title');}finally{delete window.localStorage;}
 });
+test('Claude slash-command envelopes are identified without treating arbitrary messages as commands',()=>{
+ const item=window.parseWearableCommand('<command-message>loop</command-message> <command-name>/loop</command-name> <command-args>Review the example</command-args>');assert.equal(item.name,'/loop');assert.equal(item.body,'Review the example');assert.equal(window.parseWearableCommand('Please show <command-name>/loop</command-name>'),null);assert.equal(window.parseWearableCommand('<command-name>/bad<script></command-name>'),null);
+ assert.equal(window.isWearableInterruption('[Request interrupted by user for tool use]'),true);assert.equal(window.isWearableInterruption('I interrupted a request'),false);
+});

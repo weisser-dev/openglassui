@@ -19,3 +19,7 @@ test('structured SDK result is accepted and incomplete suggestions are rejected'
  const rows=[{role:'user',text:'Q'},{role:'assistant',text:'A'}],make=payload=>()=>({close(){},async *[Symbol.asyncIterator](){yield {type:'result',structured_output:payload};}});
  assert.deepEqual(await generateReplySuggestions(rows,{workspace:'/tmp',queryImpl:make({suggestions:['Ja','Nein','Bitte erklären']})}),['Ja','Nein','Bitte erklären']);await assert.rejects(generateReplySuggestions(rows,{workspace:'/tmp',queryImpl:make({suggestions:['one']})}));
 });
+test('provider interruption markers do not hide the last completed exchange',async()=>{
+ let input;const queryImpl=args=>{input=args;return {close(){},async *[Symbol.asyncIterator](){yield {type:'result',structured_output:{suggestions:['A','B','C']}};}}};
+ const rows=[{role:'user',text:'Check the example'},{role:'assistant',text:'The check succeeded'},{role:'user',text:'[Request interrupted by user for tool use]'}];const result=await generateReplySuggestions(rows,{queryImpl,workspace:'/tmp'});assert.equal(result.length,3);assert.match(input.prompt,/check succeeded/);assert.doesNotMatch(input.prompt,/Request interrupted/);
+});

@@ -12,6 +12,8 @@ window.openGlassDemoApi=async(url,options={})=>{
  if(url.startsWith('/api/sessions?'))return {sessions:[]};
  if(url==='/api/tasks'){const input=JSON.parse(options.body),id=`demo-${Date.now()}`;window.openGlassDemoState.tasks.unshift({id,agentId:input.agentId,agentName:window.openGlassDemoState.agents.find(a=>a.id===input.agentId)?.name||'Agent',projectId:input.projectId,projectName:'Hello world',prompt:input.prompt,status:'completed',model:input.model,createdAt:new Date().toISOString(),lastMessageAt:new Date().toISOString(),sessionId:id,messages:[{role:'user',text:input.prompt},{role:'assistant',text:'This is a simulated response. No agent was contacted.'}]});return {id};}
  if(url.match(/^\/api\/tasks\/[^/]+\/decision$/)){const task=window.openGlassDemoState.tasks.find(t=>url.includes(t.id));if(task){delete task.pendingDecision;task.status='completed';task.messages.push({role:'assistant',text:'Example decision received. This is simulated data.'});}return {ok:true};}
+ if(url.match(/^\/api\/tasks\/[^/]+\/suggestion-accepted$/))return {ok:true};
+ if(url.match(/^\/api\/tasks\/[^/]+\/suggestions$/))return {suggestions:['Please explain the example in a little more detail.','Can you add a small test for this?','Looks good. What should I do next?']};
  if(url.match(/^\/api\/tasks\/[^/]+\/resume$/)){const task=window.openGlassDemoState.tasks.find(t=>url.includes(t.id));if(task){const input=JSON.parse(options.body);if(input.model)task.model=input.model;task.messages.push({role:'user',text:input.prompt},{role:'assistant',text:'This is a simulated response.'});}return {ok:true};}
  throw new Error('Unavailable in the browser-only demo.');
 };

@@ -4,9 +4,13 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Show locally counted suggestion activity for paired devices; indicate when speech and token metrics are unavailable.
+
 - Monitor imported Claude Code and Codex histories in the background, present separate message bubbles, and group duplicate imports by provider session. External approvals remain unavailable.
 
 ### Added
+
+- Present slash-command entries as expandable commands with their origin, and show reply suggestions as a focused, swipeable bubble.
 
 - Dashboard and demo language selectors and configurable reply-suggestion instructions.
 
@@ -44,6 +48,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 - Use a black wearable background in dark themes for additive displays.
 
 ### Fixed
+
+- Ignore Claude interruption markers when selecting a completed exchange for reply suggestions.
 
 - Avoid counting older loaded messages as unread and read rendered text without Markdown markers.
 
