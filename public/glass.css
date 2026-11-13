@@ -71,3 +71,5 @@
 :root:not([data-theme=light]) .composer-wrap,:root:not([data-theme=light]) .composer-bar{background:#000}
 footer{display:flex;justify-content:space-between;gap:12px}#glass-version{white-space:nowrap;color:#a6bca1}
 .wearable{padding-bottom:58px}footer.is-home{position:fixed;z-index:4;bottom:0;left:50%;transform:translateX(-50%);width:min(600px,100%);margin:0;padding:10px 20px;background:#000}:root[data-theme=light] footer.is-home{background:#f3f7f0}
+
+.chat-output strong{font-weight:750}.chat-output code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.95em;color:inherit;background:rgba(255,255,255,.08);border-radius:3px;padding:1px 3px}

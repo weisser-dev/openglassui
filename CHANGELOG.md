@@ -18,6 +18,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Changed
 
+- Show each assistant response as one scrollable bubble and render common Markdown formatting safely on wearable displays.
+
 - Replace dashboard task controls with project management and a chart of requests and successful completions from paired devices. Group connection settings and glasses guidance in a settings dialog.
 
 - Discourage new Cloudflare Quick Tunnel selections because their addresses change on restart.
@@ -26,6 +28,10 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 - Use a black wearable background in dark themes for additive displays.
 
 ### Fixed
+
+- Keep recent Claude conversation text visible even when the session contains many newer tool-only events. External interactive requests remain unavailable in read-only imports.
+
+- Hide the wearable model control when the agent does not report selectable models, and refresh availability when a session reports its model catalog.
 
 - Retry alignment of the newest chat message after the wearable host finishes its layout, without overriding later user navigation.
 

@@ -39,7 +39,7 @@ export async function listGlobalSessions(agent,command='codex') {
 }
 export async function readLatestClaudeMessages(id,workspace,readMessages=getSessionMessages) {
  const messages=await readMessages(id,{dir:workspace});
- return messages.slice(-100);
+ return messages.filter(item=>{if(!['user','assistant'].includes(item?.type))return false;const content=item.message?.content;return typeof content==='string'&&content.trim()!==''||Array.isArray(content)&&content.some(part=>part?.type==='text'&&typeof part.text==='string'&&part.text.trim()!=='');}).slice(-100);
 }
 export async function readAgentSession(agent,id,workspace,command='codex') {
  if(!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Ungültige Sitzungs-ID.');
