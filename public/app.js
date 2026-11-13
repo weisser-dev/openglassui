@@ -1,6 +1,7 @@
 const $ = s => document.querySelector(s);
 let state, selected = null, rendered = '', observedTasks = null;
 const titleResolver=window.createSessionTitleResolver(async url=>{const response=await fetch(url);if(!response.ok)throw new Error('Session titles unavailable');return response.json();},()=>refresh());
+window.openExistingTask=(agentId,sessionId)=>{const existing=window.uniqueSessionTasks(state?.tasks||[]).find(task=>task.agentId===agentId&&task.sessionId===sessionId);if(!existing)return false;selected=existing.id;$('#project').value=existing.projectId||'default';void refresh(true);$('#tasks').scrollIntoView({behavior:'smooth'});return true;};
 window.rememberSessionTitle=(agentId,projectId,sessionId,title)=>titleResolver.remember(agentId,projectId,sessionId,title);
 const statusText = {running:'LÄUFT', completed:'FERTIG', failed:'FEHLGESCHLAGEN', stopped:'GESTOPPT', interrupted:'UNTERBROCHEN'};
 function el(tag, className, text) { const e = document.createElement(tag); if (className) e.className=className; if (text !== undefined) e.textContent=text; return e; }
@@ -8,13 +9,13 @@ async function refresh(force = false) {
   try {
     const r = await fetch('/api/state'); state = await r.json(); titleResolver.enrich(state.tasks);
     if (window.Notification && Notification.permission==='granted') for(const notice of taskNotices(observedTasks,state.tasks)) new Notification('OpenGlassUI',{body:`${notice.agentName}: ${notice.text}`});
-    observedTasks=new Map(state.tasks.map(task=>[task.id,{status:task.status,decision:task.pendingDecision?.id}]));
+    observedTasks=new Map(state.tasks.map(task=>[task.id,{status:task.status,decision:task.pendingDecision?.id,snapshot:task.snapshotSync?.changedAt}]));
     const agentSelect=$('#agent'),agentValue=agentSelect.value;if(JSON.stringify([...agentSelect.options].map(o=>[o.value,o.textContent]))!==JSON.stringify(state.agents.map(a=>[a.id,a.name]))){agentSelect.replaceChildren();for(const agent of state.agents){const option=el('option','',agent.name);option.value=agent.id;agentSelect.append(option);}if(state.agents.some(agent=>agent.id===agentValue))agentSelect.value=agentValue;}
     const projectSelect=$('#project'); const projectValue=projectSelect.value;
     if (JSON.stringify([...projectSelect.options].map(o=>[o.value,o.textContent]))!==JSON.stringify(state.projects.map(p=>[p.id,p.name]))) { projectSelect.replaceChildren(); for(const project of state.projects){const option=el('option','',project.name);option.value=project.id;projectSelect.append(option);} if([...projectSelect.options].some(o=>o.value===projectValue))projectSelect.value=projectValue; }
     const projectList=$('#projects-list');const listSignature=JSON.stringify(state.projects);if(projectList.dataset.signature!==listSignature && !projectList.contains(document.activeElement)){projectList.dataset.signature=listSignature;projectList.replaceChildren();for(const project of state.projects){const row=el('div','device-row');row.append(el('span','',project.name));if(project.id!=='default'){const remove=el('button','stop','Entfernen');remove.type='button';remove.onclick=async()=>{if(!confirm('Projekt aus OpenGlassUI entfernen? Die Dateien bleiben erhalten. Frühere Aufgaben können ohne erneute Einrichtung nicht fortgesetzt werden.'))return;const response=await fetch(`/api/projects/${project.id}/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const result=await response.json();if(!response.ok)alert(result.error);await refresh(true);};row.append(remove);}projectList.append(row);}}
-    window.renderUsageOverview($('#usage-overview'),state.tasks);
-    $('#workspace').textContent=state.workspace; $('#count').textContent=state.tasks.length;
+    const visibleTasks=window.uniqueSessionTasks(state.tasks);window.renderUsageOverview($('#usage-overview'),visibleTasks);
+    $('#workspace').textContent=state.workspace; $('#count').textContent=visibleTasks.length;
     const container=$('#tasks');
     if (!state.tasks.length) return;
     if (selected === null || (selected && !state.tasks.some(t=>t.id===selected))) selected=state.tasks[0].id;
@@ -24,10 +25,10 @@ async function refresh(force = false) {
     rendered=signature;
     const openId=document.activeElement?.dataset?.task;
     container.replaceChildren();
-    for (const task of state.tasks) {
+    for (const task of visibleTasks) {
       const card=el('article','task'); const button=el('button','task-head'); button.type='button'; button.dataset.task=task.id; button.setAttribute('aria-expanded', String(selected===task.id));
       const title=el('div',''); title.append(el('span','agent-label',task.agentName),el('strong','task-prompt',window.taskDisplayTitle(task)));
-      button.append(title,el('span','status '+task.status,task.pendingDecision?'ENTSCHEIDUNG':statusText[task.status] || task.status));
+      button.append(title,el('span','status '+task.status,task.pendingDecision?'ENTSCHEIDUNG':task.prompt==='Importierte Sitzung'?(task.snapshotSync?.status==='watching'?'MONITORING':task.snapshotSync?.status==='unavailable'?'SNAPSHOT · OFFLINE':'SNAPSHOT'):statusText[task.status] || task.status));
       button.onclick=()=>{selected=selected===task.id?'':task.id; refresh(true);}; card.append(button);
       if (selected===task.id) { const details=el('div','task-details'); if(task.events?.length)details.append(window.renderTaskEvents(task.events)); if(task.usage)details.append(el('pre','usage',window.formatUsage(task.usage))); if(task.pendingDecision)details.append(window.decisionUI(task,async (url,data)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)alert(result.error);refresh(true);})); const out=el('pre','output',(task.prompt==='Importierte Sitzung'?window.cleanImportedTranscript(task.output):task.output) || 'Warte auf Ausgabe …'); details.append(out); if(task.status==='running'){const stop=el('button','stop','Aufgabe stoppen'); stop.onclick=async()=>{await fetch(`/api/tasks/${task.id}/stop`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); refresh(true);};details.append(stop);} else if(task.sessionId && state.projects.some(p=>p.id===(task.projectId || 'default'))) {const form=el('form','follow'); const input=el('textarea'); input.placeholder='Folgeanweisung …'; input.required=true; const send=el('button','primary','Sitzung fortsetzen ↗'); send.type='submit'; form.append(input,send); form.onsubmit=async e=>{e.preventDefault(); const r=await fetch(`/api/tasks/${task.id}/resume`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:input.value})}); const result=await r.json(); if(!r.ok)alert(result.error);else refresh(true);}; details.append(form);} card.append(details); }
       container.append(card);

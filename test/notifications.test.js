@@ -38,3 +38,8 @@ test('opening one notification leaves another completion available',()=>{
  manager.update(new Map(tasks.map(task=>[task.id,{status:'running'}])),tasks);
  const first=manager.current(tasks);manager.dismiss(first);assert.notEqual(manager.current(tasks).taskId,first.taskId);
 });
+test('new external text activity produces a notice only after a change',()=>{
+ const task={id:'a',agentName:'Claude',status:'completed',snapshotSync:{changedAt:'later'}};
+ assert.equal(notices(new Map([['a',{status:'completed',snapshot:'before'}]]),[task])[0].text,'New activity');
+ assert.equal(notices(new Map([['a',{status:'completed',snapshot:'later'}]]),[task]).length,0);
+});

@@ -15,3 +15,7 @@ test('imported conversation hides system-reminder blocks',()=>{
  const claude=[{type:'user',message:{content:'Hello\n<system-reminder>internal details</system-reminder>\nWorld'}}];
  assert.equal(formatSession(claude,'claude'),'DU\nHello\n\nWorld');
 });
+
+test('structured session messages preserve recent content within a bounded total',async()=>{
+ const {formatSessionMessages}=await import('../session-format.js');const rows=formatSessionMessages([{type:'user',message:{content:'a'.repeat(80000)}},{type:'assistant',message:{content:'b'.repeat(80000)}}]);assert.equal(rows.reduce((sum,row)=>sum+row.text.length,0),100000);assert.equal(rows.at(-1).text,'b'.repeat(80000));
+});

@@ -23,3 +23,18 @@ window.createSessionTitleResolver=function(api,onUpdate=()=>{}){
 };
 window.cleanImportedTranscript=function(text){return String(text||'').replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi,'').replace(/\n{3,}/g,'\n\n').trim();};
 window.taskDisplayTitle=function(task,fallback='Imported session'){return task.title||(task.prompt&&task.prompt!=='Importierte Sitzung'?task.prompt:fallback);};
+// Show one entry per provider session without deleting any stored task history.
+window.uniqueSessionTasks=function(tasks){
+ const result=[],indices=new Map();
+ const rank=task=>task.pendingDecision?2:task.status==='running'?1:0;
+ const time=task=>Date.parse(task.lastMessageAt||task.createdAt)||0;
+ for(const task of tasks){if(!task.sessionId){result.push(task);continue;}const key=`${task.agentId}\u0000${task.sessionId}`;const index=indices.get(key);if(index===undefined){indices.set(key,result.length);result.push(task);continue;}const current=result[index];if(rank(task)>rank(current)||(rank(task)===rank(current)&&time(task)>time(current)))result[index]=task;}
+ return result;
+};
+// Provider history contains tool events; only text messages are presented as chat bubbles.
+window.formatProviderSession=function(session){
+ const result=[];const add=(role,content)=>{let value=typeof content==='string'?content:Array.isArray(content)?content.filter(item=>item?.type==='text'&&typeof item.text==='string').map(item=>item.text).join('\n'):'';value=window.cleanImportedTranscript(value);if(value)result.push({role,text:value.slice(-100000)});};
+ if(Array.isArray(session)){for(const item of session){if(item?.type==='user')add('user',item.message?.content);else if(item?.type==='assistant')add('assistant',item.message?.content);}}
+ else if(Array.isArray(session?.turns)){for(const turn of session.turns)for(const item of turn.items||[]){if(item.type==='userMessage')add('user',item.content);else if(item.type==='agentMessage')add('assistant',item.text);}}
+ return result.slice(-100);
+};

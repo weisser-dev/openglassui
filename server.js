@@ -14,7 +14,8 @@ import { createAutostart } from './autostart.js';
 import { createAcpClient } from './agent-client.js';
 import { createCloudflaredInstaller } from './tunnel-installer.js';
 import { createPushService } from './push.js';
-import { formatSession } from './session-format.js';
+import { formatSession, formatSessionMessages } from './session-format.js';
+import { createSessionMonitor } from './session-monitor.js';
 import { readProjectRepository } from './project-metadata.js';
 import { startConversationTurn, appendAssistantText, appendTranscriptText } from './conversation.js';
 
@@ -221,7 +222,7 @@ const handler = async (req, res) => {
       if (url.pathname === '/api/revoke') { if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'}); devices.clear(); pairings.clear(); await saveDevices(); changed(); return json(res,200,{ok:true}); }
       if (url.pathname === '/api/sessions/open') {
         const input=await body(req), cfg=agents.find(a=>a.id===input.agent); if(!cfg || (!['codex','claude','kiro','opencode'].includes(input.agent)&&!isGenericAcp(cfg)))return json(res,400,{error:'Agent nicht unterstützt.'});
-        const project=projectById(input.projectId || 'default'); const data=await (isGenericAcp(cfg)?createAcpClient(cfg).readSession(project.path,input.id):input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):input.agent==='opencode'?readOpenCodeSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);
+        const existing=[...tasks.values()].find(task=>task.agentId===input.agent&&task.sessionId===input.id);if(existing)return json(res,200,exposed(existing));const project=projectById(input.projectId || 'default'); const data=await (isGenericAcp(cfg)?createAcpClient(cfg).readSession(project.path,input.id):input.agent==='kiro'?readKiroSession(project.path,input.id,cfg.command):input.agent==='opencode'?readOpenCodeSession(project.path,input.id,cfg.command):readAgentSession(input.agent,input.id,project.path,cfg.command));assertCurrentAccess(req);const concurrent=[...tasks.values()].find(task=>task.agentId===input.agent&&task.sessionId===input.id);if(concurrent)return json(res,200,exposed(concurrent));
         const task={id:randomUUID(),agentId:input.agent,agentName:cfg.name,prompt:'Importierte Sitzung',...(typeof input.title==='string'&&input.title.trim()?{title:input.title.trim().slice(0,200)}:{}),status:'completed',output:formatSession(data,input.agent),createdAt:new Date().toISOString(),sessionId:input.id,projectId:project.id,projectName:project.name};
         tasks.set(task.id,task);save();return json(res,201,exposed(task));
       }
@@ -261,6 +262,7 @@ const handler = async (req, res) => {
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,error.status || 400,{error:error.message}); }
 };
+const sessionMonitor=createSessionMonitor({tasks:()=>tasks.values(),readSnapshot:async task=>{const project=projectById(task.projectId||'default'),cfg=agents.find(agent=>agent.id===task.agentId);if(!cfg)throw new Error('Agent unavailable');const session=await readAgentSession(task.agentId,task.sessionId,project.path,cfg.command);return {text:formatSession(session,task.agentId),messages:formatSessionMessages(session)};},onUpdate:changedSnapshot=>{if(changedSnapshot)save();else changed();},onActivity:()=>notifyPush('activity')});
 const server=http.createServer(handler), gateway=http.createServer(handler);
 const eventServer=new WebSocketServer({noServer:true,maxPayload:4096});
 for(const listener of [server,gateway])listener.on('upgrade',(req,socket,head)=>{
@@ -276,7 +278,7 @@ for(const listener of [server,gateway])listener.on('upgrade',(req,socket,head)=>
 });
 const heartbeat=setInterval(()=>{for(const ws of sockets)if(ws.readyState===WebSocket.OPEN)ws.ping();},30000);heartbeat.unref();
 server.listen(port,host,()=>console.log(`OpenGlassUI läuft lokal: http://${host}:${port}\nProjekt: ${workspace}`));
-gateway.listen(gatewayPort,host,()=>{console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`);if(setupState.complete&&setupState.autoStartTunnel===true){try{tunnel.start(setupState.provider);}catch(error){console.error('Automatic tunnel start failed:',error.message);}}});
+gateway.listen(gatewayPort,host,()=>{sessionMonitor.start();console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`);if(setupState.complete&&setupState.autoStartTunnel===true){try{tunnel.start(setupState.provider);}catch(error){console.error('Automatic tunnel start failed:',error.message);}}});
 
 let shuttingDown=false;
-for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue,setupQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;sessionMonitor.stop();tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue,setupQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});

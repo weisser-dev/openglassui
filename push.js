@@ -26,7 +26,7 @@ export async function createPushService({dataDir,devices,saveDevices,transport=w
   async subscribe(device,raw){const previous=device.push,previousDelivery=device.pushDelivery;device.push=validatePushSubscription(raw);delete device.pushDelivery;try{await saveDevices();}catch(error){device.push=previous;device.pushDelivery=previousDelivery;throw error;}},
   async unsubscribe(device){const previous=device.push,previousDelivery=device.pushDelivery;delete device.push;delete device.pushDelivery;try{await saveDevices();}catch(error){device.push=previous;device.pushDelivery=previousDelivery;throw error;}},
   async notify(kind){
-   if(!['decision','completed','failed'].includes(kind))return;
+   if(!['decision','completed','failed','activity'].includes(kind))return;
    // Deliberately omit prompts, project names, paths, and agent output.
    const payload=JSON.stringify({kind});let changed=false;
    await Promise.all([...devices.values()].filter(device=>device.push).map(async device=>{const subscription=device.push;let status='accepted';try{const safeSubscription=validatePushSubscription(subscription);await transport.sendNotification(safeSubscription,payload,{vapidDetails,TTL:60,timeout:8000});}catch(error){status=(error.statusCode===404||error.statusCode===410)?'expired':'failed';}if(device.push===subscription && devices.get(device.id)===device){device.pushDelivery={status,at:new Date().toISOString()};if(status==='expired')delete device.push;changed=true;}}));

@@ -4,6 +4,7 @@ function taskNotices(previous, tasks) {
  for (const task of tasks) {
   const prior=previous?.get(task.id); let text='';
   if (task.pendingDecision && prior?.decision!==task.pendingDecision.id) text='Decision required';
+  else if (prior && task.snapshotSync?.changedAt && prior.snapshot!==task.snapshotSync.changedAt) text='New activity';
   else if (prior?.status==='running' && task.status!=='running') text=task.status==='completed'?'Task completed':task.status==='failed'?'Task failed':'Task stopped';
   if (text) notices.push({taskId:task.id,agentName:task.agentName,text});
  }
@@ -29,7 +30,8 @@ function createWearableNotices() {
    for(const task of tasks){
     if(dismissed.get(task.id)!==task.pendingDecision?.id)dismissed.delete(task.id);
     const prior=previous?.get(task.id);
-    if(prior?.status==='running' && task.status!=='running')completed.set(task.id,task.status==='completed'?'Task completed':task.status==='failed'?'Task failed':'Task stopped');
+    if(prior && task.snapshotSync?.changedAt && prior.snapshot!==task.snapshotSync.changedAt)completed.set(task.id,'New activity');
+    else if(prior?.status==='running' && task.status!=='running')completed.set(task.id,task.status==='completed'?'Task completed':task.status==='failed'?'Task failed':'Task stopped');
    }
   },
   current(tasks,translate=value=>value){

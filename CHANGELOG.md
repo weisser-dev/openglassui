@@ -4,6 +4,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Monitor imported Claude Code and Codex histories in the background, present separate message bubbles, and group duplicate imports by provider session. External approvals remain unavailable.
+
 ### Added
 
 - A linked-device dashboard with a dedicated pairing action, device count and connection settings.
