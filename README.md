@@ -59,9 +59,9 @@ Meta's device capabilities, developer settings, and WebMCP availability may vary
 
 ## Local setup
 
-### npm package (publication pending)
+### npm package
 
-Once `@weisser-dev/openglassui` has been published, install it with `npm install -g @weisser-dev/openglassui` and start it with `openglassui`. The package stores its configuration and local data in `~/.openglassui`; the current directory becomes the initial default project. Use `OPENGLASS_CONFIG` and `OPENGLASS_DATA_DIR` to override those paths. npm publishing is prepared but the first release requires a package owner to publish the initial package and configure the GitHub workflow as a trusted publisher. Until then, use the source installation below.
+Install the published `@weisser-dev/openglassui` package with `npm install -g @weisser-dev/openglassui` and start it with `openglassui`. The package stores its configuration and local data in `~/.openglassui`; the current directory becomes the initial default project. Use `OPENGLASS_CONFIG` and `OPENGLASS_DATA_DIR` to override those paths.
 
 The setup wizard has separate opt-in switches for starting OpenGlassUI at user login (macOS only) and starting the selected tunnel when the companion starts. The login item takes effect at the next login and points to the current Node executable and installation path; reconfigure it after moving or removing either. Automatic tunnel start requires a completed setup. A public tunnel exposes the gateway and Cloudflare Quick Tunnel addresses change on restart.
 
