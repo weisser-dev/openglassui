@@ -15,7 +15,8 @@ import { createAcpClient } from './agent-client.js';
 import { createCloudflaredInstaller } from './tunnel-installer.js';
 import { createPushService } from './push.js';
 import { formatSession, formatSessionMessages } from './session-format.js';
-import { generateReplySuggestions } from './reply-suggestions.js';
+import { generateReplySuggestions, listSuggestionModels } from './reply-suggestions.js';
+import { createSuggestionSettings } from './suggestion-settings.js';
 import { createSessionMonitor } from './session-monitor.js';
 import { readProjectRepository } from './project-metadata.js';
 import { startConversationTurn, appendAssistantText, appendTranscriptText } from './conversation.js';
@@ -29,6 +30,7 @@ const workspace = await realpath(path.resolve(path.dirname(configPath), config.w
 const agents = config.agents || [];
 const dataDir = path.resolve(process.env.OPENGLASS_DATA_DIR || path.join(root, '.openglass'));
 await mkdir(dataDir, { recursive:true, mode:0o700 });
+const suggestionSettings=createSuggestionSettings(dataDir);
 const autostart = createAutostart({ server: path.join(root, 'server.js'), config: configPath, dataDir });
 const customAgentsPath=path.join(dataDir,'acp-agents.json');let customAgents=[];try{customAgents=JSON.parse(await readFile(customAgentsPath,'utf8'));if(!Array.isArray(customAgents))throw new Error('Invalid ACP agent list.');}catch(error){if(error.code!=='ENOENT')throw error;}
 for(const entry of customAgents)if(entry?.type==='acp'&&!agents.some(agent=>agent.id===entry.id))agents.push(entry);
@@ -164,6 +166,8 @@ const handler = async (req, res) => {
       if (req.method === 'GET' && url.pathname === '/api/push/status') { const device=requestDevice(req);if(!device)return json(res,403,{error:'Only paired devices can check background alerts.'});return json(res,200,{enabled:Boolean(device.push)}); }
       if (req.method === 'GET' && url.pathname === '/api/push/key') { if(!requestDevice(req))return json(res,403,{error:'Nur gekoppelte Geräte können Push aktivieren.'});return json(res,200,{publicKey:push.publicKey}); }
       if (req.method === 'GET' && url.pathname === '/api/devices') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'});return json(res,200,{devices:[...devices.values()].map(({id,name,createdAt,lastSeenAt,push,pushDelivery})=>({id,name,createdAt,lastSeenAt:lastSeenAt||null,pushEnabled:Boolean(push),pushDelivery:pushDelivery || null}))}); }
+      if (req.method === 'GET' && url.pathname === '/api/suggestion-settings') {if(!isLocal)return json(res,403,{error:'Available locally only.'});return json(res,200,await suggestionSettings.read());}
+      if (req.method === 'GET' && url.pathname === '/api/suggestion-models') {if(!isLocal)return json(res,403,{error:'Available locally only.'});try{return json(res,200,{provider:'claude',models:await listSuggestionModels({workspace})});}catch{return json(res,503,{error:'Could not load Claude models. Check Claude Code authentication.'});}}
       if (req.method === 'GET' && url.pathname === '/api/autostart') { if(!isLocal)return json(res,403,{error:'Available locally only.'}); return json(res,200,await autostart.status()); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel/install-status') {if(!isLocal)return json(res,403,{error:'Available locally only.'});return json(res,200,{...tunnelInstaller.status(),platform:process.platform,brewAvailable:await executableAvailable('brew'),installed:await executableAvailable('cloudflared')});}
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
@@ -185,6 +189,7 @@ const handler = async (req, res) => {
         const decision={id:randomUUID(),kind:input.tool_name==='AskUserQuestion'?'question':'approval',toolName:input.tool_name,input:input.tool_input,description:typeof input.tool_input.description==='string'?input.tool_input.description:''};
         const promise=queueDecision(task,decision,controller.signal);notifyPush('decision');const answer=await promise;clearTimeout(timer);if(!res.destroyed)json(res,200,controller.signal.aborted?{type:'unavailable'}:answer);return;
       }
+      if(url.pathname==='/api/suggestion-settings'){if(!isLocal)return json(res,403,{error:'Available locally only.'});try{return json(res,200,await suggestionSettings.write(await body(req)));}catch{return json(res,400,{error:'Invalid suggestion settings.'});}}
       if(url.pathname==='/api/autostart'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req);if(typeof input.enabled!=='boolean')return json(res,400,{error:'Invalid login start setting.'});return json(res,200,await autostart.set(input.enabled));}
       if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req),selected=input.agents ?? [input.agent];if(!Array.isArray(selected)||!selected.length||new Set(selected).size!==selected.length||selected.some(id=>!agents.some(a=>a.id===id))||!selected.includes(input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale','tailscale-funnel','external'].includes(input.provider)||typeof input.complete!=='boolean'||(input.autoStartTunnel!==undefined&&typeof input.autoStartTunnel!=='boolean'))return json(res,400,{error:'Invalid setup selection.'});let publicUrl=setupState.publicUrl||'';if(input.publicUrl!==undefined){try{if(input.publicUrl){const u=new URL(input.publicUrl);if(u.protocol!=='https:'||u.pathname!=='/'||u.search||u.hash||u.username||u.password)throw new Error();publicUrl=u.origin;}else publicUrl='';}catch{return json(res,400,{error:'Enter a valid HTTPS origin.'});}}setupState={agent:input.agent,agents:selected,projectId:input.projectId,provider:input.provider,publicUrl,complete:input.complete,autoStartTunnel:input.autoStartTunnel??setupState.autoStartTunnel??false};await saveSetup();setupSelectionSaved=true;changed();return json(res,200,{setup:setupState});}
       if(url.pathname==='/api/push/subscription' || url.pathname==='/api/push/unsubscribe'){
@@ -245,7 +250,7 @@ const handler = async (req, res) => {
         if(input.model!==undefined&&(!['codex','claude'].includes(agent.id)||typeof input.model!=='string'||!/^[-a-zA-Z0-9_.:]{1,120}$/.test(input.model)))return json(res,400,{error:'Invalid or unsupported model.'});const project=projectById(input.projectId || 'default'); return json(res,201,exposed(run(agent,input.prompt,null,project,input.model,!isLocal)));
       }
       const suggestionsMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/suggestions$/);
-      if(suggestionsMatch){await body(req);const task=tasks.get(suggestionsMatch[1]);if(!task)return json(res,404,{error:'Task not found.'});if(task.agentId!=='claude')return json(res,400,{error:'Reply suggestions are currently available for Claude Code only.'});const rows=Array.isArray(task.messages)?task.messages:task.snapshotMessages;try{const suggestions=await generateReplySuggestions(rows,{workspace:projectById(task.projectId||'default').path});assertCurrentAccess(req);return json(res,200,{suggestions});}catch{return json(res,503,{error:'Could not generate suggestions. Check Claude authentication and conversation history.'});}}
+      if(suggestionsMatch){await body(req);const task=tasks.get(suggestionsMatch[1]);if(!task)return json(res,404,{error:'Task not found.'});const rows=Array.isArray(task.messages)?task.messages:task.snapshotMessages;try{const suggestions=await generateReplySuggestions(rows,{workspace:projectById(task.projectId||'default').path,...await suggestionSettings.read()});assertCurrentAccess(req);return json(res,200,{suggestions});}catch{return json(res,503,{error:'Could not generate suggestions. Check Claude authentication and conversation history.'});}}
       const decisionMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/decision$/);
       if (decisionMatch) {
         const input=await body(req);const task=tasks.get(decisionMatch[1]), resolve=decisions.get(decisionMatch[1])?.[0]?.settle, pending=task?.pendingDecision;

@@ -8,6 +8,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Added
 
+- Choose an available Claude model and configure message and character limits for reply suggestions in dashboard settings.
+
 - Hide recent chats locally via a directional action and restore them in settings.
 - Generate optional, tool-free Claude reply suggestions from the latest exchange.
 
