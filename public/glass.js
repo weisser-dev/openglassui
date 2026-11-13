@@ -4,7 +4,7 @@ let token=localStorage.getItem('openglass-token')||'',state=null,observed=null,c
 let route={page:'agents'},stack=[],selectedAgent='',selectedProject='',selectedTask='',sessions=[],sessionsState='idle',rendered='';
 const notices=createWearableNotices();let visibleNotice=null,alertStatus=null,alertMessage='';
 const selectedModels=new Map(),modelCapabilities=new Map();let speakingKey='';let modelPicker={key:'',agent:'',items:[],loading:false,error:''};
-const drafts=new Map(),audio=createWearableAudio(window.speechSynthesis,window.SpeechSynthesisUtterance);
+const drafts=new Map(),importedSnapshots=new Map(),audio=createWearableAudio(window.speechSynthesis,window.SpeechSynthesisUtterance);
 const fontSizes={small:0.9,medium:1,large:1.2,extra:1.4};
 let fontSize=localStorage.getItem('openglass-font-size')||'medium';if(!(fontSize in fontSizes))fontSize='medium';document.documentElement.style.setProperty('--glass-text-scale',fontSizes[fontSize]);
 let speechLanguage=localStorage.getItem('openglass-speech-language')||'';
@@ -16,8 +16,8 @@ const statusText={running:'Running',completed:'Completed',failed:'Failed',stoppe
 async function api(url,options={}){if(window.OPENGLASS_DEMO)return window.openGlassDemoApi(url,options);options.headers={...options.headers,...(token?{Authorization:`Bearer ${token}`}:{})};const response=await fetch(url,options);const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed.');error.status=response.status;throw error;}return data;}
 function el(tag,text,className){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;if(className)item.className=className;return item;}
 function button(label,action,description){const item=el('button',undefined,'menu-item');item.type='button';item.dataset.focusKey=label;const text=el('span',undefined,'item-copy');text.append(el('strong',label));if(description)text.append(el('small',description));item.append(text,el('span','›','chevron'));item.onclick=action;return item;}
-function focusScreen(){focusWearableScreen(document,route.page,Boolean(state?.tasks.find(task=>task.id===selectedTask)?.pendingDecision));}
-function go(page,selection={}){audio.stop();speakingKey='';stack.push(captureWearableView(document,window,route,{selectedAgent,selectedProject,selectedTask}));history.pushState({openglassDepth:stack.length},'',location.href);({selectedAgent=selectedAgent,selectedProject=selectedProject,selectedTask=selectedTask}=selection);route={page};render(true);window.scrollTo(0,0);focusScreen();}
+function focusScreen(){focusWearableScreen(document,route.page,Boolean(state?.tasks.find(task=>task.id===selectedTask)?.pendingDecision),window);}
+function go(page,selection={}){audio.stop();speakingKey='';stack.push(captureWearableView(document,window,route,{selectedAgent,selectedProject,selectedTask}));history.pushState({openglassDepth:stack.length},'',location.href);({selectedAgent=selectedAgent,selectedProject=selectedProject,selectedTask=selectedTask}=selection);route={page};render(true);window.scrollTo(0,0);focusScreen();if(page==='chat')void refreshImportedHistory(selectedTask);}
 function back(){if(stack.length)history.back();}
 function restoreBack(){if(!stack.length)return;audio.stop();speakingKey='';const view=stack.pop();route=view.route;({selectedAgent,selectedProject,selectedTask}=view.selection);render(true);restoreWearableView(document,window,view);}
 window.addEventListener('popstate',event=>{const target=Number.isInteger(event.state?.openglassDepth)?event.state.openglassDepth:0;while(stack.length>target)restoreBack();});
@@ -34,9 +34,16 @@ function composer(key,sendLabel,onSend,modelName){
  const agentId=selectedAgent,cacheKey=agentId+':'+key;if(!modelCapabilities.has(cacheKey)){const query=`/api/models?agent=${encodeURIComponent(agentId)}${key.startsWith('reply:')?'&task='+encodeURIComponent(key.slice(6)):''}`;const entry={value:null,promise:null};entry.promise=api(query).then(data=>entry.value=Boolean(data.supported&&data.models?.length)).catch(()=>{modelCapabilities.delete(cacheKey);return false;});modelCapabilities.set(cacheKey,entry);}
  const capability=modelCapabilities.get(cacheKey);if(capability.value===true)model.disabled=false;capability.promise.then(supported=>{if(!model.isConnected)return;model.disabled=!supported;model.title=supported?t('Choose model'):t('Provider default; model selection unavailable');});bar.append(model,input,send);wrap.append(error,bar);return wrap;
 }
+async function refreshImportedHistory(taskId){
+ const task=state?.tasks.find(item=>item.id===taskId);if(!task||task.prompt!=='Importierte Sitzung'||Array.isArray(task.messages)||!task.sessionId)return;
+ const initialFocus=document.activeElement;
+ try{const result=await api(`/api/sessions/${encodeURIComponent(task.agentId)}/${encodeURIComponent(task.sessionId)}?projectId=${encodeURIComponent(task.projectId||'default')}`);if(typeof result.text!=='string')throw new Error('Invalid session history');importedSnapshots.set(taskId,result.text);if(route.page!=='chat'||selectedTask!==taskId)return;
+  const active=document.activeElement,editing=active?.matches?.('input, textarea, select')||active?.closest?.('.decision');if(editing){updateChatWhileEditing();return;}const stayAtLatest=active===initialFocus;render(true);if(stayAtLatest)focusScreen();
+ }catch{if(route.page==='chat'&&selectedTask===taskId)setError(t('Could not refresh this imported history. The displayed snapshot may be outdated.'));}
+}
 function heading(kicker,title,description){const section=el('div',undefined,'screen-heading');section.append(el('p',kicker,'eyebrow'),el('h1',title));if(description)section.append(el('p',description,'hint'));return section;}
 function buildChat(task,agent){
-const chat=el('div',undefined,'chat-thread');const messages=Array.isArray(task.messages)?task.messages:[...(task.prompt!=='Importierte Sitzung'?[{role:'user',text:task.prompt}]:[]),...(task.output?[{role:'transcript',text:task.output}]:[])];
+const chat=el('div',undefined,'chat-thread');const messages=Array.isArray(task.messages)?task.messages:[...(task.prompt!=='Importierte Sitzung'?[{role:'user',text:task.prompt}]:[]),...((importedSnapshots.get(task.id)??task.output)?[{role:'transcript',text:importedSnapshots.get(task.id)??task.output}]:[])];
    for(const [index,message] of messages.entries()){
     const displayText=message.role==='transcript'&&/^thread .+ already has an active writer\s*$/i.test(message.text||'')?t('This Codex session is open for writing in another client. Close it there, then try again.'):message.text;const parts=splitWearableText(displayText,300);if(!parts.length)continue;
     for(const [partIndex,part] of parts.entries()){
@@ -71,6 +78,7 @@ function render(force=false){if(!state)return;const screen=$('#screen');const ac
   const title=task?.prompt&&task.prompt!=='Importierte Sitzung'?task.prompt:t('Conversation');
   screen.append(heading(`${agent?.name||task?.agentName||'Agent'} / ${project?.name||task?.projectName||'Project'}`,title,task?(task.pendingDecision?t('Decision required'):['failed','stopped','interrupted'].includes(task.status)?t(statusText[task.status]):undefined):t('Chat not found')));
   if(task){
+   if(task.prompt==='Importierte Sitzung'&&!Array.isArray(task.messages))screen.append(el('p',t('Imported history is a snapshot. Activity and approvals from another client are not live.'),'hint imported-snapshot'));
    if(task.pendingDecision)screen.append(window.decisionUI(task,async(url,data)=>{const result=await post(url,data);if(result)await refresh(true);},t));
    if(task.sessionId&&task.status!=='running')screen.append(el('p',t('Right from a response: reply'),'chat-shortcut'));screen.append(buildChat(task,agent));
    if(showDetails&&task.events?.length)screen.append(window.renderTaskEvents(task.events));if(showDetails&&task.usage)screen.append(el('pre',window.formatUsage(task.usage),'usage'));

@@ -29,7 +29,7 @@ test('screen navigation follows browser history and restores one view per back',
  const document={};const window={scrollTo(){},addEventListener(type,fn){if(type==='popstate')pop=fn;}};
  const history={pushState(state){states.push(state);},back(){states.pop();pop({state:states.at(-1)||null});}};
  const sandbox=vm.createContext({document,window,history,location:{href:'https://example.test/glass'},
-  audio:{stop(){}}, captureWearableView:(_doc,_win,route,selection)=>({route:{...route},selection:{...selection}}),
+  audio:{stop(){}}, refreshImportedHistory:async()=>{}, captureWearableView:(_doc,_win,route,selection)=>({route:{...route},selection:{...selection}}),
   restoreWearableView:(_doc,_win,view)=>restored.push(view.route.page),render(){},focusScreen(){}});
  vm.runInContext(`let speakingKey='',route={page:'agents'},stack=[],selectedAgent='',selectedProject='',selectedTask='';${navigation}`,sandbox);
  vm.runInContext("go('projects',{selectedAgent:'codex'});go('chats',{selectedProject:'p'});",sandbox);
@@ -55,4 +55,21 @@ test('opening a chat focuses the latest message unless a decision needs attentio
  context.focusWearableScreen(doc,'chat',false);assert.equal(focused,'latest');
  pending=true;context.focusWearableScreen(doc,'chat',true);assert.equal(focused,'decision');
  doc.querySelectorAll=()=>[];pending=false;context.focusWearableScreen(doc,'chat',false);assert.equal(focused,'fallback');
+});
+
+test('chat focus explicitly scrolls into view and does not steal focus later',()=>{
+ let calls=0,frame;const target={isConnected:true,focus(){doc.activeElement=this;},scrollIntoView(){calls++;}};
+ const doc={activeElement:null,querySelectorAll:()=>[target],querySelector:()=>null};
+ const win={requestAnimationFrame(callback){frame=callback;}};
+ context.focusWearableScreen(doc,'chat',false,win);assert.equal(calls,1);frame();assert.equal(calls,2);
+ context.focusWearableScreen(doc,'chat',false,win);doc.activeElement={};frame();assert.equal(calls,3);
+});
+
+test('opening an imported history refreshes its snapshot and keeps editing focus',async()=>{
+ const source=await readFile(new URL('../public/glass.js',import.meta.url),'utf8');const start=source.indexOf('async function refreshImportedHistory('),end=source.indexOf('\nfunction heading(',start);
+ let requested='',updates=0,rendered=0,focuses=0;const active={matches:()=>true};const document={activeElement:active};
+ const sandbox=vm.createContext({document,api:async url=>{requested=url;return {text:'updated history'};},updateChatWhileEditing:()=>updates++,render:()=>rendered++,focusScreen:()=>focuses++,setError(){},t:x=>x});
+ vm.runInContext(`const importedSnapshots=new Map();let state={tasks:[{id:'x',prompt:'Importierte Sitzung',agentId:'claude',sessionId:'sid',projectId:'p'}]},route={page:'chat'},selectedTask='x';${source.slice(start,end)}`,sandbox);
+ await vm.runInContext("refreshImportedHistory('x')",sandbox);
+ assert.equal(requested,'/api/sessions/claude/sid?projectId=p');assert.equal(updates,1);assert.equal(rendered,0);assert.equal(focuses,0);assert.equal(vm.runInContext("importedSnapshots.get('x')",sandbox),'updated history');
 });

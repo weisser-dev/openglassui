@@ -18,12 +18,20 @@ function isWearableBack(event, active) {
 }
 
 // Open a chat at the newest message; pending decisions take precedence.
-function focusWearableScreen(doc, page, hasDecision) {
+function focusWearableScreen(doc, page, hasDecision, win = globalThis) {
   let target;
   if (page === 'chat' && hasDecision) target = doc.querySelector('#screen .decision pre, #screen .decision button, #screen .decision input');
   if (!target && page === 'chat') target = [...doc.querySelectorAll('#screen [data-chat-message]')].at(-1);
   if (!target) target = doc.querySelector(page === 'chats' ? '#screen textarea' : '#screen button, #screen textarea, #screen pre[tabindex]');
-  target?.focus({preventScroll:false});
+  if (!target) return;
+  target.focus({preventScroll:false});
+  // The glasses WebKit host can focus an element without scrolling it into view.
+  if (page === 'chat' && typeof target.scrollIntoView === 'function') {
+    target.scrollIntoView({block:'center',inline:'nearest'});
+    if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(()=>{
+      if (target.isConnected && doc.activeElement === target) target.scrollIntoView({block:'center',inline:'nearest'});
+    });
+  }
 }
 // Some device composers update a text field without dispatching an input event.
 function attachWearableComposer(input, send, drafts, key, win) {

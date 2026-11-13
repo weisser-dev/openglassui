@@ -6,6 +6,7 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Fixed
 
+- Load the latest Claude session messages and explicitly scroll the wearable view to the focused message.
 - Keep dictated drafts and update the Send control when a device composer changes text without sending an input event.
 - Explain when a Codex conversation is already being written by another client.
 

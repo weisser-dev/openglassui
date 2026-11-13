@@ -37,10 +37,14 @@ export async function listGlobalSessions(agent,command='codex') {
  if(agent==='codex')return (await codexRequest('thread/list',{limit:50,sortKey:'updated_at'},command)).data.map(s=>({id:s.id,agent,cwd:s.cwd,title:s.name||s.preview||'Codex-Sitzung',updatedAt:s.updatedAt}));
  throw new Error('Nicht unterstützter Agent.');
 }
+export async function readLatestClaudeMessages(id,workspace,readMessages=getSessionMessages) {
+ const messages=await readMessages(id,{dir:workspace});
+ return messages.slice(-100);
+}
 export async function readAgentSession(agent,id,workspace,command='codex') {
  if(!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Ungültige Sitzungs-ID.');
  const sessions=await listAgentSessions(agent,workspace,command);if(!sessions.some(s=>s.id===id))throw new Error('Sitzung nicht im konfigurierten Projekt gefunden.');
- if(agent==='claude')return await getSessionMessages(id,{dir:workspace,limit:100});
+ if(agent==='claude')return await readLatestClaudeMessages(id,workspace);
  return (await codexRequest('thread/read',{threadId:id,includeTurns:true},command)).thread;
 }
 export function runClaude({prompt,workspace,sessionId,model,onModels=()=>{},onMessage,onDecision,onDone,queryImpl=query}) {
