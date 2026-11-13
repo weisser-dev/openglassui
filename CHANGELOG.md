@@ -16,6 +16,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Changed
 
+- Discourage new Cloudflare Quick Tunnel selections because their addresses change on restart.
+
 - Resolve provider titles for imported sessions and reduce internal system-reminder noise in displayed history.
 - Use a black wearable background in dark themes for additive displays.
 

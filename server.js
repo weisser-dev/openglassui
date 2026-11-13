@@ -36,7 +36,7 @@ let customAgentsQueue=Promise.resolve();function addCustomAgent(entry){customAge
 const storePath = path.join(dataDir, 'tasks.json');
 const projectsPath = path.join(dataDir, 'projects.json');
 const setupPath = path.join(dataDir, 'setup.json');
-let setupState={agent:'codex',agents:['codex'],projectId:'default',provider:'cloudflare',publicUrl:'',complete:false,autoStartTunnel:false};
+let setupState={agent:'codex',agents:['codex'],projectId:'default',provider:'tailscale-funnel',publicUrl:'',complete:false,autoStartTunnel:false};
 let setupSelectionSaved=false;
 try{const saved=JSON.parse(await readFile(setupPath,'utf8'));setupState={...setupState,...saved};setupSelectionSaved=Array.isArray(saved.agents)&&saved.agents.length>0;}catch(error){if(error.code!=='ENOENT')throw error;}
 let setupQueue=Promise.resolve();

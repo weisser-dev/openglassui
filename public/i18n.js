@@ -2,6 +2,7 @@
 // the interface is still being migrated and must not translate user content.
 (() => {
  const de={
+  'Cloudflare Quick Tunnel · temporary · not recommended':'Cloudflare Quick Tunnel · temporär · nicht empfohlen',
   'Tailscale Funnel · public, stable address':'Tailscale Funnel · öffentlich, feste Adresse',
   'Existing HTTPS address · independently managed':'Bestehende HTTPS-Adresse · unabhängig verwaltet',
   'Existing HTTPS address':'Bestehende HTTPS-Adresse',

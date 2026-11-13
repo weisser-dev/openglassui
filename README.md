@@ -114,7 +114,7 @@ Optional environment variables:
 
 ### Stable addresses across updates
 
-Quick Tunnels are temporary. To keep the same glasses address, choose **Tailscale Funnel** in setup, enable the provider's HTTPS and Funnel prompts, and enable connection auto-start. Funnel publishes the gateway to the internet; the hostname remains the same while the device name and tailnet name remain unchanged. Test connectivity on the actual glasses: Funnel support on Meta glasses has not yet been verified. Tailscale Serve is private and may not be reachable by the glasses even when the phone can reach it. The managed tunnel reconnects when OpenGlassUI restarts; a restart causes a brief outage.
+Quick Tunnels are temporary and disabled for new selection in the interface; existing connections are not stopped. To keep the same glasses address, choose **Tailscale Funnel** in setup, enable the provider's HTTPS and Funnel prompts, and enable connection auto-start. Funnel publishes the gateway to the internet; the hostname remains the same while the device name and tailnet name remain unchanged. Test connectivity on the actual glasses: Funnel support on Meta glasses has not yet been verified. Tailscale Serve is private and may not be reachable by the glasses even when the phone can reach it. The managed tunnel reconnects when OpenGlassUI restarts; a restart causes a brief outage.
 
 Alternatively, create a [named Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/create-local-tunnel/) or another independently managed HTTPS reverse proxy. Route only `http://127.0.0.1:4174` (or your configured gateway port), run it as its own service, and choose **Existing HTTPS address** in setup. Enter its HTTPS origin; OpenGlassUI saves it with the local setup and will not manage or stop that independent service. Do not expose port 4173. Changing from an old hostname requires one new pairing; the same stable origin and preserved device data keep pairing across ordinary updates. Local network access similarly requires a reachable HTTPS endpoint and a certificate trusted by the glasses; LAN-only connectivity is not yet verified.
 
@@ -126,7 +126,7 @@ Both the admin service and gateway bind to `127.0.0.1`, not the local network. T
 
 1. Enable the developer/web-app options required by Meta AI for your glasses.
 2. Start OpenGlassUI and leave it running on the computer.
-3. In the dashboard, select an installed tunnel provider and click **Tunnel starten**. Alternatively, in a second terminal create an HTTPS tunnel, for example with cloudflared and the default port:
+3. In the dashboard, select an installed tunnel provider and click **Tunnel starten**. For temporary testing only, an existing Quick Tunnel may also be started separately from a terminal with the default port:
 
    ```sh
    cloudflared tunnel --url http://127.0.0.1:4174
