@@ -30,10 +30,10 @@ test('screen navigation follows browser history and restores one view per back',
  const history={pushState(state){states.push(state);},back(){states.pop();pop({state:states.at(-1)||null});}};
  const sandbox=vm.createContext({document,window,history,location:{href:'https://example.test/glass'},
   audio:{stop(){}}, refreshImportedHistory:async()=>{}, captureWearableView:(_doc,_win,route,selection)=>({route:{...route},selection:{...selection}}),
-  restoreWearableView:(_doc,_win,view)=>restored.push(view.route.page),render(){},focusScreen(){}});
+  restoreWearableView:(_doc,_win,view)=>restored.push(view.route.page),render(){},focusScreen(){restored.push('agents');}});
  vm.runInContext(`let speakingKey='',route={page:'agents'},stack=[],selectedAgent='',selectedProject='',selectedTask='';${navigation}`,sandbox);
  vm.runInContext("go('projects',{selectedAgent:'codex'});go('chats',{selectedProject:'p'});",sandbox);
- assert.equal(states.length,2);vm.runInContext('back()',sandbox);assert.deepEqual(restored,['projects']);
+ assert.equal(states.length,2);restored.length=0;vm.runInContext('back()',sandbox);assert.deepEqual(restored,['projects']);
  pop({state:null});assert.deepEqual(restored,['projects','agents']);
 });
 

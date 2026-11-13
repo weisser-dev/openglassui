@@ -24,19 +24,16 @@ test('wearable notice prioritizes outstanding decisions over unrelated completio
  tasks.push({id:'c',agentName:'Codex',status:'running',pendingDecision:{id:'e'}});assert.match(context.wearableNotice(previous,tasks).text,/2 pending/);
 });
 
-test('wearable notices identify tasks and stay dismissed after opening',()=>{
- const manager=context.createWearableNotices();
- const tasks=[{id:'a',agentName:'Codex',projectName:'Example',prompt:'Check the tests',status:'completed'}];
- manager.update(new Map([['a',{status:'running'}]]),tasks);
- let notice=manager.current(tasks);assert.match(notice.text,/Codex · Example · Task completed/);assert.match(notice.text,/Check the tests/);
- manager.dismiss(notice);manager.update(new Map([['a',{status:'completed'}]]),tasks);assert.equal(manager.current(tasks),null);
- tasks[0].pendingDecision={id:'d1'};manager.update(null,tasks);notice=manager.current(tasks);assert.equal(notice.decision,true);manager.dismiss(notice);manager.update(null,tasks);assert.equal(manager.current(tasks),null);
- tasks[0].pendingDecision={id:'d2'};manager.update(null,tasks);assert.equal(manager.current(tasks).decisionId,'d2');
+test('opening a chat clears its activity badge and dismisses its decision without approving it',()=>{
+ const manager=context.createWearableNotices();const task={id:'a',agentName:'Codex',agentId:'codex',sessionId:'s',projectName:'Example',prompt:'Check the tests',status:'completed'};
+ manager.update(new Map([['a',{status:'running'}]]),[task]);assert.equal(manager.count(task),1);assert.equal(manager.current([task]),null);
+ manager.open(task);assert.equal(manager.count(task),0);
+ task.pendingDecision={id:'d1'};manager.update(null,[task]);let notice=manager.current([task]);assert.match(notice.text,/Decision required/);manager.open(task);manager.update(null,[task]);assert.equal(manager.current([task]),null);assert.equal(task.pendingDecision.id,'d1');
+ task.pendingDecision={id:'d2'};manager.update(null,[task]);assert.equal(manager.current([task]).decisionId,'d2');
 });
-test('opening one notification leaves another completion available',()=>{
- const manager=context.createWearableNotices();const tasks=['a','b'].map(id=>({id,agentName:'Agent',prompt:id,status:'completed'}));
- manager.update(new Map(tasks.map(task=>[task.id,{status:'running'}])),tasks);
- const first=manager.current(tasks);manager.dismiss(first);assert.notEqual(manager.current(tasks).taskId,first.taskId);
+test('duplicate imports share one badge and opening one clears it',()=>{
+ const manager=context.createWearableNotices();const tasks=['a','b'].map(id=>({id,agentId:'claude',sessionId:'s',status:'completed',snapshotSync:{changedAt:'new'}}));
+ manager.update(new Map(tasks.map(task=>[task.id,{status:'completed',snapshot:'old'}])),tasks);assert.equal(manager.count(tasks[0]),1);assert.equal(manager.count(tasks[1]),1);manager.open(tasks[1]);assert.equal(manager.count(tasks[0]),0);
 });
 test('new external text activity produces a notice only after a change',()=>{
  const task={id:'a',agentName:'Claude',status:'completed',snapshotSync:{changedAt:'later'}};

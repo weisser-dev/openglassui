@@ -20,6 +20,7 @@ function isWearableBack(event, active) {
 // Open a chat at the newest message; pending decisions take precedence.
 function focusWearableScreen(doc, page, hasDecision, win = globalThis) {
   let target;
+  if (page === 'agents') target = doc.querySelector('#screen [data-recent-chat]');
   if (page === 'chat' && hasDecision) target = doc.querySelector('#screen .decision pre, #screen .decision button, #screen .decision input');
   if (!target && page === 'chat') target = [...doc.querySelectorAll('#screen [data-chat-message]')].at(-1);
   if (!target) target = doc.querySelector(page === 'chats' ? '#screen textarea' : '#screen button, #screen textarea, #screen pre[tabindex]');

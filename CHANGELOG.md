@@ -29,6 +29,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Fixed
 
+- Clear wearable notices when opening a chat and show new activity counts beside recent chats.
+
 - Keep recent Claude conversation text visible even when the session contains many newer tool-only events. External interactive requests remain unavailable in read-only imports.
 
 - Hide the wearable model control when the agent does not report selectable models, and refresh availability when a session reports its model catalog.
