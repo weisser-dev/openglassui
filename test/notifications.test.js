@@ -53,3 +53,6 @@ test('two views on the same origin share one unread count and read state',()=>{
  const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value)};
  const task={id:'a',agentId:'claude',sessionId:'s',snapshotMessages:[{role:'assistant',text:'first'}]};const a=context.createWearableNotices(storage),b=context.createWearableNotices(storage);a.update(null,[task]);b.update(null,[task]);task.snapshotMessages.push({role:'assistant',text:'second'});a.update(null,[task]);b.update(null,[task]);assert.equal(a.count(task),1);assert.equal(b.count(task),1);a.open(task);b.reload();assert.equal(b.count(task),0);
 });
+test('prepending older history does not count old messages as unread',()=>{
+ const manager=context.createWearableNotices(),task={id:'a',snapshotMessages:[{role:'assistant',text:'last visible'}]};manager.update(null,[task]);task.snapshotMessages=[...Array.from({length:39},(_,i)=>({role:'assistant',text:`old ${i}`})),{role:'assistant',text:'last visible'}];manager.update(null,[task]);assert.equal(manager.count(task),0);task.snapshotMessages.push({role:'assistant',text:'new answer'});manager.update(null,[task]);assert.equal(manager.count(task),1);
+});

@@ -22,7 +22,7 @@ function wearableNotice(previous,tasks) {
 // Keep notices until opened, without treating an unresolved decision as approved.
 function createWearableNotices(storage=null) {
  const dismissed=new Map(),key=task=>task.sessionId?`${task.agentId}\u0000${task.sessionId}`:`task\u0000${task.id}`;
- const storageKey='openglass-unread-v1';let saved={};
+ const storageKey='openglass-unread-v2';let saved={};
  try{const data=JSON.parse(storage?.getItem(storageKey)||'{}');if(data&&typeof data==='object'&&!Array.isArray(data))saved=data;}catch{}
  const records=new Map(Object.entries(saved));
  function reload(){if(!storage)return;try{const data=JSON.parse(storage.getItem(storageKey)||'{}');if(!data||typeof data!=='object'||Array.isArray(data))return;records.clear();for(const [id,value] of Object.entries(data))records.set(id,value);}catch{}}
@@ -37,9 +37,12 @@ function createWearableNotices(storage=null) {
     const current=messages(task),old=records.get(id);if(!old||!Array.isArray(old.messages)){records.set(id,{messages:current,unread:0});continue;}
     const before=old.messages;let count=Number.isSafeInteger(old.unread)&&old.unread>0?old.unread:0;
     if(current.length && JSON.stringify(current)!==JSON.stringify(before)){
-     let overlap=0;for(let n=Math.min(before.length,current.length);n>0;n--){if(before.slice(-n).every((v,i)=>v===current[i])){overlap=n;break;}}
-     const added=overlap?current.length-overlap:current.length>before.length?current.length-before.length:0;
-     if(added>0)count+=added;else if(count===0)count=1;
+     // Histories may be reloaded with more older messages. Only count entries
+     // after a known last message; never treat prepended history as new.
+     const last=before.at(-1),anchor=last?current.lastIndexOf(last):-1;
+     if(anchor>=0){const added=current.length-anchor-1;if(added>0)count+=added;}
+     else if(before.length&&count===0)count=1;
+     else if(!before.length)count+=current.length;
     }
     records.set(id,{messages:current,unread:count});
    }

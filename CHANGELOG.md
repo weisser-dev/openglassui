@@ -34,6 +34,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Fixed
 
+- Avoid counting older loaded messages as unread and read rendered text without Markdown markers.
+
 - Reuse locally cached provider session titles to avoid temporary placeholder titles.
 
 - Preserve unread message indicators across wearable app reloads and improve common Markdown formatting.
