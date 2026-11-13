@@ -28,9 +28,19 @@ function focusWearableScreen(doc, page, hasDecision, win = globalThis) {
   // The glasses WebKit host can focus an element without scrolling it into view.
   if (page === 'chat' && typeof target.scrollIntoView === 'function') {
     target.scrollIntoView({block:'center',inline:'nearest'});
-    if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(()=>{
-      if (target.isConnected && doc.activeElement === target) target.scrollIntoView({block:'center',inline:'nearest'});
-    });
+    const align=()=>{
+      // Host layout can settle after focus, including after the first animation frame.
+      // Never move the view after the user has selected another control.
+      if (!target.isConnected || doc.activeElement !== target) return;
+      target.scrollIntoView({block:'center',inline:'nearest'});
+      const rect=target.getBoundingClientRect?.();
+      if (rect && typeof win.scrollTo==='function' && Number.isFinite(win.scrollY) && Number.isFinite(win.innerHeight)) {
+        const position=Math.max(0,win.scrollY+rect.top-(win.innerHeight-rect.height)/2);
+        win.scrollTo(0,position);
+      }
+    };
+    if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(align);
+    if (typeof win.setTimeout === 'function') {win.setTimeout(align,150);win.setTimeout(align,500);}
   }
 }
 // Some device composers update a text field without dispatching an input event.

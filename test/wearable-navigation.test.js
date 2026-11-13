@@ -73,3 +73,11 @@ test('opening an imported history refreshes its snapshot and keeps editing focus
  await vm.runInContext("refreshImportedHistory('x')",sandbox);
  assert.equal(requested,'/api/sessions/claude/sid?projectId=p');assert.equal(updates,1);assert.equal(rendered,0);assert.equal(focuses,0);assert.equal(vm.runInContext("importedSnapshots.get('x').text",sandbox),'updated history');
 });
+
+
+test('late wearable layout alignment stops when focus moves or chat is left',()=>{
+ const timers=[];let scrolls=0;const doc={activeElement:null,querySelectorAll:()=>[target],querySelector:()=>null};
+ const target={isConnected:true,focus(){doc.activeElement=this;},scrollIntoView(){scrolls++;},getBoundingClientRect:()=>({top:700,height:80})};
+ const win={scrollY:0,innerHeight:600,scrollTo(_x,y){assert.equal(y,440);},setTimeout(fn){timers.push(fn);}};
+ context.focusWearableScreen(doc,'chat',false,win);assert.equal(scrolls,1);timers[0]();assert.equal(scrolls,2);doc.activeElement={};timers[1]();assert.equal(scrolls,2);
+});
