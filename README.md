@@ -114,11 +114,13 @@ Optional environment variables:
 | `OPENGLASS_CONFIG` | Path to a JSON configuration file | `config.json` in the project directory |
 | `OPENGLASS_DATA_DIR` | Directory for local task data | `.openglass/` in the project directory |
 
+Dashboard and public demo offer English and German interface controls. The detailed hosted documentation and privacy pages remain in English. UI text is translated locally; chat content is not translated.
+
 ### Wearable chat shortcuts
 
 On a recent chat, swipe left to reveal the crossed-out eye, then select it to hide the chat from the home screen. The session itself remains available under its agent and project. Restore hidden chats under Settings → Recent chats. Long-press detection depends on the device host and is not required. These preferences and cached session titles are stored locally in the web app's origin and do not automatically transfer to another URL or device.
 
-For a chat from any supported agent, **Suggest replies** sends a bounded selection of the most recent conversation messages to a separate, tool-free Claude turn. Configure the model and the maximum message and character counts under Dashboard → Settings → Reply suggestions. Available models are retrieved from the authenticated Claude Code SDK; Claude Code is currently the only suggestion provider; other providers are not supported yet. This may use your Claude account or incur provider charges. Swipe left or right through the results and select one to place it in the draft; sending still requires explicit confirmation. Suggestions are not supported for other agents yet and are not generated automatically.
+For a chat from any supported agent, **Suggest replies** sends a bounded selection of the most recent conversation messages to a separate, tool-free Claude turn. Configure the model, instruction prompt, and maximum message and context-character counts under Dashboard → Settings → Reply suggestions. For OpenGlassUI-managed runs, up to five recent tool-event titles and statuses can be included within the context limit. External session activity is marked unknown, rather than inferred. Available models are retrieved from the authenticated Claude Code SDK; Claude Code is currently the only suggestion provider; other providers are not supported yet. This may use your Claude account or incur provider charges. Swipe left or right through the results and select one to place it in the draft; sending still requires explicit confirmation. Suggestions are not supported for other agents yet and are not generated automatically.
 
 ### External Claude Code permission forwarding (experimental)
 

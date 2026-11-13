@@ -8,6 +8,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ### Added
 
+- Dashboard and demo language selectors and configurable reply-suggestion instructions.
+
 - Choose an available Claude model and configure message and character limits for reply suggestions in dashboard settings.
 
 - Hide recent chats locally via a directional action and restore them in settings.
@@ -24,6 +26,9 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 - Local task-status charts and a wearable version indicator.
 
 ### Changed
+
+- Refresh settings, device-preview and public-site styling with theme-aware scrollbars and clearer loading states.
+- Include bounded recent tool activity when available and show animated progress during managed runs.
 
 - Show each assistant response as one scrollable bubble and render common Markdown formatting safely on wearable displays.
 

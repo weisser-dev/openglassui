@@ -3,6 +3,7 @@
  const now=new Date().toISOString();let next=0;
  const projects=[{id:'default',name:'Hello world'}],agents=[{id:'codex',name:'Codex'},{id:'claude',name:'Claude Code'},{id:'kiro',name:'Kiro CLI'},{id:'opencode',name:'OpenCode'}];
  const tasks=[{id:'demo-task-1',agentId:'codex',agentName:'Codex',projectId:'default',projectName:'Hello world',prompt:'Create a hello world example',status:'completed',sessionId:'demo-session',createdAt:now,trackedMessages:1,output:'Hello world! This is simulated output.'},{id:'demo-task-2',agentId:'claude',agentName:'Claude Code',projectId:'default',projectName:'Hello world',prompt:'Review the example project',status:'running',createdAt:now,trackedMessages:1,output:'Checking the project…'}];
+ let suggestionSettings={provider:'claude',model:'haiku',maxMessages:6,maxChars:12000,prompt:'Review the user’s request and recent exchange. Identify what was done, what remains open, and any explicit question. Suggest three distinct, concise replies that fit the user’s language and intent. Do not claim that an action happened or that a permission was granted unless the context says so.'};
  const devices=[{id:'demo-device',name:'Demo glasses',createdAt:now,pushEnabled:false}];let tunnel={status:'running',provider:'cloudflare',url:'https://demo.invalid'};
  const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
  const body=options=>{try{return JSON.parse(options?.body||'{}');}catch{return {};}};
@@ -10,6 +11,8 @@
  window.fetch=async(input,options={})=>{
   const url=new URL(typeof input==='string'?input:input.url,location.href),path=url.pathname,method=(options.method||'GET').toUpperCase();
   if(url.origin!==location.origin||!path.startsWith('/api/'))return json({error:'Network access is disabled in the demo.'},403);
+  if(path==='/api/suggestion-settings'){if(method==='POST')suggestionSettings={...suggestionSettings,...body(options)};return json(suggestionSettings);}
+  if(path==='/api/suggestion-models')return json({provider:'claude',models:[{id:'',name:'Provider default'},{id:'haiku',name:'Haiku 5.5'},{id:'sonnet',name:'Sonnet 5.5'}]});
   if(path==='/api/state')return json(state());
   if(path==='/api/devices')return json({devices});
   if(path==='/api/tunnel')return json(tunnel);

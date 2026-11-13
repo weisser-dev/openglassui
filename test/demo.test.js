@@ -22,6 +22,7 @@ test('dashboard demo keeps all agent, pairing and network actions in memory',asy
  vm.runInContext(await readFile(new URL('../demo/dashboard-mock.js',import.meta.url),'utf8'),context);
  const before=await (await window.fetch('/api/state')).json();assert.equal(before.agents.length,4);assert.equal(before.tasks.length,2);
  await window.fetch('/api/tasks',{method:'POST',body:JSON.stringify({agentId:'codex',projectId:'default',prompt:'Example only'})});const after=await (await window.fetch('/api/state')).json();assert.equal(after.tasks.length,3);assert.match(after.tasks[0].output,/simulated/i);
+ const settings=await(await window.fetch('/api/suggestion-settings')).json();assert.equal(settings.model,'haiku');assert.ok(settings.prompt);const models=await(await window.fetch('/api/suggestion-models')).json();assert.equal(models.models[1].name,'Haiku 5.5');
  const pairing=await(await window.fetch('/api/pairing',{method:'POST',body:'{}'})).json();assert.match(decodeURIComponent(pairing.qr),/DEMO ONLY/);
  assert.equal((await window.fetch('https://example.org/api/state')).status,403);assert.equal((await window.fetch('/real-local-path')).status,403);
 });

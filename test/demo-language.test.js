@@ -1,0 +1,6 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import vm from 'node:vm';
+test('public demo language switch translates and restores interface text',async()=>{
+ const handlers={},selection={value:'en',addEventListener(_event,fn){this.change=fn;}},node={nodeValue:'Your agents.',parentElement:{tagName:'H1'}};let advanced=false;
+ const document={body:{},documentElement:{lang:'en'},addEventListener(name,fn){handlers[name]=fn;},createTreeWalker(){return {get currentNode(){return node;},nextNode(){if(advanced)return false;advanced=true;return true;}};},querySelectorAll(selector){return selector==='[data-language-selector]'?[selection]:[];},querySelector(){return null;}};
+ const values=new Map(),localStorage={getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)},NodeFilter={SHOW_TEXT:4,FILTER_REJECT:2,FILTER_ACCEPT:1};const context=vm.createContext({document,localStorage,NodeFilter,WeakMap});vm.runInContext(await readFile(new URL('../demo/language.js',import.meta.url),'utf8'),context);handlers.DOMContentLoaded();assert.equal(node.nodeValue,'Your agents.');selection.value='de';selection.change();assert.equal(node.nodeValue,'Deine Agenten.');assert.equal(document.documentElement.lang,'de');selection.value='en';selection.change();assert.equal(node.nodeValue,'Your agents.');
+});
