@@ -1,6 +1,6 @@
 # OpenGlassUI
 
-[Try the interactive demo](https://weisser-dev.github.io/openglassui/) · [Documentation](https://weisser-dev.github.io/openglassui/docs.html) · [Privacy](https://weisser-dev.github.io/openglassui/privacy.html) · [Installation](#local-setup) · [Architecture](docs/ARCHITECTURE.md)
+[Try the interactive demo](https://weisser-dev.github.io/openglassui/) · [Documentation](https://weisser-dev.github.io/openglassui/docs.html) · [Privacy](https://weisser-dev.github.io/openglassui/privacy.html) · [Changelog](CHANGELOG.md) · [Installation](#local-setup) · [Architecture](docs/ARCHITECTURE.md)
 
 The public demo uses fictional data and runs entirely in the browser; it does not connect to agents or control a local machine. It is not the installable glasses app: generate the app's QR code in your local companion setup instead.
 

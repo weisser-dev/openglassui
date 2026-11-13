@@ -32,6 +32,7 @@
     "!hello-world.js",
     "config.example.json",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ]
 }
