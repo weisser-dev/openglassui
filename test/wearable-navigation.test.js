@@ -62,7 +62,7 @@ test('chat focus explicitly scrolls into view and does not steal focus later',()
  const doc={activeElement:null,querySelectorAll:()=>[target],querySelector:()=>null};
  const win={requestAnimationFrame(callback){frame=callback;}};
  context.focusWearableScreen(doc,'chat',false,win);assert.equal(calls,1);frame();assert.equal(calls,2);
- context.focusWearableScreen(doc,'chat',false,win);doc.activeElement={};frame();assert.equal(calls,3);
+ context.focusWearableScreen(doc,'chat',false,win);target.isConnected=false;frame();assert.equal(calls,3);
 });
 
 test('opening an imported history refreshes its snapshot and keeps editing focus',async()=>{
@@ -75,9 +75,9 @@ test('opening an imported history refreshes its snapshot and keeps editing focus
 });
 
 
-test('late wearable layout alignment stops when focus moves or chat is left',()=>{
- const timers=[];let scrolls=0;const doc={activeElement:null,querySelectorAll:()=>[target],querySelector:()=>null};
+test('late wearable focus reset is corrected, but user navigation cancels retries',()=>{
+ const timers=[],listeners={};let scrolls=0;const doc={activeElement:null,querySelectorAll:()=>[target],querySelector:()=>null,addEventListener:(name,fn)=>listeners[name]=fn,removeEventListener:(name)=>delete listeners[name]};
  const target={isConnected:true,focus(){doc.activeElement=this;},scrollIntoView(){scrolls++;},getBoundingClientRect:()=>({top:700,height:80})};
  const win={scrollY:0,innerHeight:600,scrollTo(_x,y){assert.equal(y,440);},setTimeout(fn){timers.push(fn);}};
- context.focusWearableScreen(doc,'chat',false,win);assert.equal(scrolls,1);timers[0]();assert.equal(scrolls,2);doc.activeElement={};timers[1]();assert.equal(scrolls,2);
+ context.focusWearableScreen(doc,'chat',false,win);timers[0]();doc.activeElement={};timers[1]();assert.equal(doc.activeElement,target);assert.equal(scrolls,2);listeners.keydown();doc.activeElement={};timers[2]();assert.equal(scrolls,2);
 });

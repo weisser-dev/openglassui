@@ -28,10 +28,16 @@ function focusWearableScreen(doc, page, hasDecision, win = globalThis) {
   // The glasses WebKit host can focus an element without scrolling it into view.
   if (page === 'chat' && typeof target.scrollIntoView === 'function') {
     target.scrollIntoView({block:'center',inline:'nearest'});
+    let cancelled=false;
+    const events=['keydown','pointerdown','touchstart','wheel'];
+    const cleanup=()=>{cancelled=true;for(const event of events)doc.removeEventListener?.(event,cleanup,true);};
+    // Attach after the selection gesture that opened the chat has finished.
+    if(typeof win.setTimeout==='function'&&typeof doc.addEventListener==='function')win.setTimeout(()=>{if(!cancelled)for(const event of events)doc.addEventListener(event,cleanup,{capture:true,once:true});},0);
     const align=()=>{
-      // Host layout can settle after focus, including after the first animation frame.
-      // Never move the view after the user has selected another control.
-      if (!target.isConnected || doc.activeElement !== target) return;
+      if (cancelled || !target.isConnected) return;
+      // Some hosts reset focus after navigation. Restore it unless the user has
+      // started navigating, in which case the listeners above cancel retries.
+      if(doc.activeElement!==target)target.focus({preventScroll:true});
       target.scrollIntoView({block:'center',inline:'nearest'});
       const rect=target.getBoundingClientRect?.();
       if (rect && typeof win.scrollTo==='function' && Number.isFinite(win.scrollY) && Number.isFinite(win.innerHeight)) {
@@ -40,7 +46,7 @@ function focusWearableScreen(doc, page, hasDecision, win = globalThis) {
       }
     };
     if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(align);
-    if (typeof win.setTimeout === 'function') {win.setTimeout(align,150);win.setTimeout(align,500);}
+    if (typeof win.setTimeout === 'function') {win.setTimeout(align,150);win.setTimeout(align,500);win.setTimeout(cleanup,800);}
   }
 }
 // Some device composers update a text field without dispatching an input event.
