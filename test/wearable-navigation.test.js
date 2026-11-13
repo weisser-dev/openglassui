@@ -48,3 +48,11 @@ test('direction keys leave the composer and jump from a response to reply',async
  document.activeElement=reply;focused='';handler({key:'ArrowDown',preventDefault(){}});assert.equal(focused,'button');
  focused='';handler({key:'ArrowDown',isComposing:true,preventDefault(){}});assert.equal(focused,'');
 });
+
+test('opening a chat focuses the latest message unless a decision needs attention',()=>{
+ let focused='';const older={focus:()=>focused='older'},latest={focus:()=>focused='latest'},decision={focus:()=>focused='decision'},fallback={focus:()=>focused='fallback'};let pending=false;
+ const doc={querySelector:selector=>selector.includes('.decision')?(pending?decision:null):fallback,querySelectorAll:()=>[older,latest]};
+ context.focusWearableScreen(doc,'chat',false);assert.equal(focused,'latest');
+ pending=true;context.focusWearableScreen(doc,'chat',true);assert.equal(focused,'decision');
+ doc.querySelectorAll=()=>[];pending=false;context.focusWearableScreen(doc,'chat',false);assert.equal(focused,'fallback');
+});

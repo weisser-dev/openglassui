@@ -16,3 +16,12 @@ function isWearableBack(event, active) {
   return !event.defaultPrevented && !event.isComposing && (event.key === 'Escape' ||
     (event.key === 'Backspace' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(active?.tagName)));
 }
+
+// Open a chat at the newest message; pending decisions take precedence.
+function focusWearableScreen(doc, page, hasDecision) {
+  let target;
+  if (page === 'chat' && hasDecision) target = doc.querySelector('#screen .decision pre, #screen .decision button, #screen .decision input');
+  if (!target && page === 'chat') target = [...doc.querySelectorAll('#screen [data-chat-message]')].at(-1);
+  if (!target) target = doc.querySelector(page === 'chats' ? '#screen textarea' : '#screen button, #screen textarea, #screen pre[tabindex]');
+  target?.focus({preventScroll:false});
+}
