@@ -4,6 +4,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Render Markdown tables as narrow labelled rows and fenced code as readable blocks in the wearable view; add example content to the public demo.
+
 - Improve wearable send feedback, post-dictation focus, approval focus and visibility above the composer. Refresh visible imported chats more frequently without unnecessary redraws.
 
 - Remove the private Tailscale Serve provider, safely migrate existing settings, and allow temporary Cloudflare Quick Tunnels with a clear warning.

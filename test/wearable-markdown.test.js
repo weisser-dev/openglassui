@@ -18,3 +18,15 @@ test('wearable formats common Markdown without interpreting HTML',async()=>{
  assert.ok(output.children.some(n=>n.tag==='#text'&&n.textContent.includes('<script>')));
  assert.ok(output.children.some(n=>n.tag==='a'&&n.href==='https://example.com'&&n.rel==='noopener noreferrer'));
 });
+
+test('representative agent replies remain readable on a narrow display',async()=>{
+ const source=await readFile(new URL('../public/glass.js',import.meta.url),'utf8'),start=source.indexOf('function renderWearableMarkdown('),end=source.indexOf('\nfunction buildChat(',start);
+ const make=tag=>({tag,children:[],className:'',append(...items){this.children.push(...items)},textContent:'',addEventListener(){}}),document={createElement:make,createTextNode:text=>({tag:'#text',textContent:text})},context=vm.createContext({document});vm.runInContext(source.slice(start,end),context);
+ const render=text=>{const out=make('pre');context.renderWearableMarkdown(out,text);return out;},find=(node,predicate)=>[...(predicate(node)?[node]:[]),...(node.children||[]).flatMap(child=>find(child,predicate))];
+ const table=render('| Task | Status |\n| :--- | ---: |\n| Build | **Passed** |\n| Tests | 12/12 |');const rows=find(table,n=>n.className==='markdown-table-row');assert.equal(rows.length,2);assert.equal(rows[0].children[0].textContent,'Task: ');assert.equal(rows[0].children[3].textContent,'Status: ');assert.ok(find(rows[0],n=>n.tag==='strong'&&n.children.some(c=>c.textContent==='Passed')).length);
+ const code=render('Here is code:\n```js\nconst result = "a | b";\n  console.log(result);\n```\nDone.');const blocks=find(code,n=>n.className==='markdown-code-block');assert.equal(blocks.length,1);assert.equal(find(blocks[0],n=>n.tag==='code')[0].textContent,'const result = "a | b";\n  console.log(result);');assert.equal(find(blocks[0],n=>n.className==='markdown-code-language')[0].textContent,'js');assert.ok(find(code,n=>n.textContent==='Done.').length);
+ const checklist=render('- [x] Done\n- [ ] Still open\n1. First\n2. Second\n> Note');const all=find(checklist,n=>n.tag==='#text').map(n=>n.textContent).join('');assert.match(all,/☑ /);assert.match(all,/☐ /);assert.match(all,/1\. /);assert.match(all,/│ /);
+ const escaped=render('| Name | Value |\n| --- | --- |\n| A \\| B | 3 |');assert.ok(find(escaped,n=>n.textContent==='A | B').length);
+ const unsafe=render('[Unsafe](javascript:alert(1)) <script>alert(1)</script>');assert.equal(find(unsafe,n=>n.tag==='a').length,0);assert.ok(find(unsafe,n=>n.textContent.includes('<script>')).length);
+ const long=render('Long line: '+ 'word '.repeat(1000));assert.ok(find(long,n=>n.textContent.includes('word '.repeat(100))).length);
+});
