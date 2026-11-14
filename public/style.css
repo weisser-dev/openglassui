@@ -94,4 +94,4 @@
 .pairing-tree-art{display:block;padding:0;cursor:pointer;font:inherit;color:inherit}.pairing-tree-art:focus-visible{outline:3px solid #c3f77d;outline-offset:3px}.pairing-tree-caption{position:absolute;z-index:5;top:14px;left:0;right:0;color:#d7fbbb;font-size:12px;font-weight:800;letter-spacing:.04em;text-align:center;pointer-events:none}.pairing-tree-shape{top:38px}.pairing-tree-control[hidden]{display:none!important}
 /* The complete voxel scene stays in one fixed viewport during its morph. */
 .pairing-tree-art{height:250px;background:#0c1610}.pairing-tree-canvas{display:block;width:100%;height:100%;object-fit:contain}.pairing-tree-reveal{min-height:250px}.pairing-tree-caption{top:12px}.pairing-tree-widget{min-width:0}
-#pair-result .pairing-tree-reveal img{filter:sepia(.35) saturate(1.1) hue-rotate(35deg)}
+#pair-result .pairing-tree-reveal img{background:#ddf3cf;padding:0;filter:none}.pairing-colour-toggle{display:block;margin:10px auto;padding:8px 12px;font-size:12px}.pairing-colour-toggle[hidden]{display:none}

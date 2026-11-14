@@ -4,6 +4,9 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Remove the private Tailscale Serve provider, safely migrate existing settings, and allow temporary Cloudflare Quick Tunnels with a clear warning.
+- Offer a high-contrast green pairing QR with a black-and-white fallback.
+
 - Page imported histories, display validated embedded image attachments, and support optional Claude activity events.
 - Add animated gesture illustrations to the wearable tour.
 
