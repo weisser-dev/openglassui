@@ -4,6 +4,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Improve wearable send feedback, post-dictation focus, approval focus and visibility above the composer. Refresh visible imported chats more frequently without unnecessary redraws.
+
 - Remove the private Tailscale Serve provider, safely migrate existing settings, and allow temporary Cloudflare Quick Tunnels with a clear warning.
 - Offer a high-contrast green pairing QR with a black-and-white fallback.
 

@@ -81,3 +81,13 @@ test('late wearable focus reset is corrected, but user navigation cancels retrie
  const win={scrollY:0,innerHeight:600,scrollTo(_x,y){assert.equal(y,440);},setTimeout(fn){timers.push(fn);}};
  context.focusWearableScreen(doc,'chat',false,win);timers[0]();doc.activeElement={};timers[1]();assert.equal(doc.activeElement,target);assert.equal(scrolls,2);listeners.keydown();doc.activeElement={};timers[2]();assert.equal(scrolls,2);
 });
+
+test('focused message is moved fully above the sticky composer',()=>{
+ const positions=[],win={innerHeight:600,scrollY:100,scrollTo:(x,y)=>positions.push([x,y])};let rect={top:300,bottom:545};const target={getBoundingClientRect:()=>rect},doc={querySelector:()=>({getBoundingClientRect:()=>({top:480})})};
+ context.ensureWearableMessageVisible(doc,win,target);assert.deepEqual(positions,[[0,177]]);positions.length=0;rect={top:80,bottom:440};context.ensureWearableMessageVisible(doc,win,target);assert.deepEqual(positions,[]);
+});
+
+test('approval focus prefers allow once without activating it',()=>{
+ let focused='',activated=false;const allow={focus(){focused='allow';},click(){activated=true;}},details={focus(){focused='details';}},doc={querySelector:s=>s==='#screen .decision [data-default-approval]'?allow:details,querySelectorAll:()=>[]};
+ context.focusWearableScreen(doc,'chat',true,{});assert.equal(focused,'allow');assert.equal(activated,false);
+});

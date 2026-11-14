@@ -18,5 +18,5 @@ test('decision choices require a separate send and preserve the selected answer'
 });
 test('approval options keep tool details visible and send only the selected response',()=>{
  const calls=[];const task={id:'task',prompt:'Example',pendingDecision:{id:'d',kind:'approval',toolName:'Write',description:'Change a file',input:{path:'a.txt'}}};const ui=window.decisionUI(task,(url,body)=>calls.push(body));
- assert.match(ui.find(el=>el.tagName==='pre').textContent,/a.txt/);ui.find(el=>el.dataset.focusKey==='decision-option:deny').onclick();assert.equal(calls[0].type,'deny');
+ assert.match(ui.find(el=>el.tagName==='pre').textContent,/a.txt/);assert.equal(ui.find(el=>el.dataset.focusKey==='decision-option:allow').dataset.defaultApproval,'');assert.equal(calls.length,0);ui.find(el=>el.dataset.focusKey==='decision-option:deny').onclick();assert.equal(calls[0].type,'deny');
 });

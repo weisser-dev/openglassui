@@ -5,8 +5,8 @@ window.decisionUI=function(task,post,t=value=>value){
  const control=(label,key,action)=>{const button=document.createElement('button');button.type='button';button.textContent=label;button.dataset.focusKey=key;button.onclick=action;return button;};
  if(d.kind==='kiro_permission'||d.kind==='approval'){
   const details=document.createElement('pre');details.textContent=d.kind==='kiro_permission'?JSON.stringify(d.input.toolCall,null,2):`${d.toolName}\n${d.description||''}\n${JSON.stringify(d.input,null,2)}`;details.tabIndex=0;details.dataset.focusKey='decision-details';details.setAttribute('aria-label',t('Approval details. Use up and down to scroll.'));box.append(details);
-  if(d.kind==='kiro_permission')for(const option of d.input.options)box.append(control(option.name || (option.kind==='allow_once'?t('Allow once'):t('Deny')),`decision-option:${option.optionId}`,()=>post(`/api/tasks/${task.id}/decision`,{decisionId:d.id,type:'choice',optionId:option.optionId})));
-  else for(const [type,label] of [['deny','Deny'],['allow','Allow once']])box.append(control(t(label),`decision-option:${type}`,()=>post(`/api/tasks/${task.id}/decision`,{decisionId:d.id,type})));
+  if(d.kind==='kiro_permission')for(const option of d.input.options){const choice=control(option.name || (option.kind==='allow_once'?t('Allow once'):t('Deny')),`decision-option:${option.optionId}`,()=>post(`/api/tasks/${task.id}/decision`,{decisionId:d.id,type:'choice',optionId:option.optionId}));if(option.kind==='allow_once')choice.dataset.defaultApproval='';box.append(choice);}
+  else for(const [type,label] of [['deny','Deny'],['allow','Allow once']]){const choice=control(t(label),`decision-option:${type}`,()=>post(`/api/tasks/${task.id}/decision`,{decisionId:d.id,type}));if(type==='allow')choice.dataset.defaultApproval='';box.append(choice);}
  }else{
   const form=document.createElement('form'),questions=d.input?.questions||[],answers=new Map();
   form.onsubmit=event=>event.preventDefault();
