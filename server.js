@@ -53,7 +53,17 @@ let setupQueue=Promise.resolve();
 function saveSetup(){const snapshot=JSON.stringify(setupState);setupQueue=setupQueue.catch(()=>{}).then(async()=>{const temp=`${setupPath}.tmp`;await writeFile(temp,snapshot,{mode:0o600});await rename(temp,setupPath);});return setupQueue;}
 // A private Serve configuration must never silently become a public Funnel.
 if(setupState.provider==='tailscale'){setupState={...setupState,provider:'external',autoStartTunnel:false,connectionMigration:'tailscale-serve-removed'};await saveSetup();}
-async function executableAvailable(command){if(typeof command!=='string'||!command)return false;const dirs=path.isAbsolute(command)?['']:(process.env.PATH||'').split(path.delimiter);const extensions=process.platform==='win32'?(process.env.PATHEXT||'.EXE;.CMD;.BAT').split(';'):[''];for(const dir of dirs)for(const ext of extensions){try{await access(path.isAbsolute(command)?command:path.join(dir,command+ext),fsConstants.X_OK);return true;}catch{}}return false;}
+async function executableAvailable(command){
+  if(typeof command!=='string'||!command)return false;
+  const dirs=path.isAbsolute(command)?['']:(process.env.PATH||'').split(path.delimiter);
+  const extensions=process.platform==='win32'&&!path.extname(command)
+    ? (process.env.PATHEXT||'.EXE;.CMD;.BAT').split(';') : [''];
+  for(const dir of dirs)for(const ext of extensions){
+    const candidate=path.isAbsolute(command)?command+ext:path.join(dir,command+ext);
+    try{await access(candidate,fsConstants.X_OK);return true;}catch{}
+  }
+  return false;
+}
 let savedProjects = [];
 try { savedProjects = JSON.parse(await readFile(projectsPath, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const projects = new Map([['default', {id:'default', name:path.basename(workspace) || workspace, path:workspace}], ...savedProjects.map(p => [p.id,p])]);

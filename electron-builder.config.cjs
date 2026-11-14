@@ -1,3 +1,8 @@
+// GitHub Actions substitutes missing signing secrets with empty strings.
+for (const key of ['CSC_LINK', 'WIN_CSC_LINK', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']) {
+  if (process.env[key] === '') delete process.env[key];
+}
+
 const signed = process.env.OPENGLASS_SIGNED_BUILD === '1';
 
 module.exports = {
