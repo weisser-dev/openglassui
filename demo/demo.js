@@ -1,6 +1,6 @@
 (() => {
  const frame=document.querySelector('#wearable-demo');let lastFocused=null;
- const highlight=gesture=>{document.querySelectorAll('.gesture-guide-item').forEach(item=>item.classList?.toggle('is-active',item.dataset?.gesture===gesture));};
+ const highlight=gesture=>{document.querySelectorAll('.gesture-guide-item').forEach(item=>{const active=item.dataset?.gesture===gesture;item.classList?.toggle('is-active',active);if(active){const img=item.querySelector?.('img');if(img)img.src=img.src;}});};
  frame.addEventListener('load',()=>{const doc=frame.contentDocument;lastFocused=null;doc?.addEventListener('focusin',event=>{lastFocused=event.target;});});
  document.querySelectorAll('[data-key]').forEach(button=>button.addEventListener('click',()=>{
   const doc=frame.contentDocument,win=frame.contentWindow;if(!doc||!win)return;
