@@ -4,6 +4,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-14
+
 - Improve the dashboard, device management, pairing and setup layouts for small touchscreens.
 
 - Render Markdown tables as narrow labelled rows and fenced code as readable blocks in the wearable view; add example content to the public demo.
@@ -18,7 +20,7 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 - Show locally counted suggestion activity for paired devices; indicate when speech and token metrics are unavailable.
 
-- Monitor imported Claude Code and Codex histories in the background, present separate message bubbles, and group duplicate imports by provider session. External approvals remain unavailable.
+- Monitor imported Claude Code and Codex histories in the background, present separate message bubbles, and group duplicate imports by provider session. External Claude approvals require the optional permission hook; other external approvals remain limited.
 
 ### Added
 
