@@ -39,3 +39,5 @@
 
 /* Give the current action a single large, consistently coloured gesture. */
 .gesture-guide-grid{display:block}.gesture-guide-item{display:none;min-height:240px;justify-content:center;padding:12px}.gesture-guide-item.is-active{display:flex}.gesture-guide-item img{width:min(100%,220px);height:170px;object-fit:contain;background:transparent;filter:brightness(0) saturate(100%) invert(88%) sepia(35%) saturate(813%) hue-rotate(32deg) brightness(101%) contrast(99%)}.gesture-guide-item strong{font-size:16px}.gesture-guide-item span{font-size:12px}@media(max-width:760px){.gesture-guide-item{min-height:190px}.gesture-guide-item img{height:130px}}
+
+.hero-art{margin:0;min-width:0;position:relative}.hero-art img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:22px;border:1px solid var(--line);box-shadow:0 24px 75px #0005}.hero-art figcaption{font-size:11px;line-height:1.5;color:var(--muted);text-align:right;margin-top:10px}@media(max-width:760px){.hero{padding-top:36px;padding-bottom:48px;gap:24px}.hero-art img{border-radius:16px}}
