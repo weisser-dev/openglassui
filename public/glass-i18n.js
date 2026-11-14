@@ -1,5 +1,7 @@
 // UI labels only; agent and user content is never translated.
 const glassGerman={
+"◷  Load sessions from device history":"◷  Sitzungen vom Gerät laden","Browse this project’s sessions on the dashboard computer.":"Sitzungen dieses Projekts auf dem Dashboard-Rechner durchsuchen.","Device session history":"Sitzungsverlauf des Geräts",
+"Try the action below.":"Probiere die Aktion unten aus.","Nice! You can continue.":"Geschafft! Du kannst weitermachen.","Swipe down to highlight the second item.":"Wische nach unten, um den zweiten Eintrag zu markieren.","First item":"Erster Eintrag","Second item":"Zweiter Eintrag","Select the practice button.":"Wähle den Übungsknopf aus.","Select me":"Wähle mich aus","Open the practice screen, then use the back gesture to return.":"Öffne die Übungsansicht und kehre mit der Zurück-Geste zurück.","Open practice screen":"Übungsansicht öffnen","PRACTICE":"ÜBUNG","Now go back":"Jetzt zurück","Tap your middle finger and thumb to return to the previous screen.":"Tippe Mittelfinger und Daumen zusammen, um zur vorherigen Ansicht zurückzukehren.","On a keyboard or in the simulator, press Escape.":"Drücke auf der Tastatur oder im Simulator Escape.",
 "Replies run as a separate agent continuation and may not appear in another open client.":"Antworten starten eine separate Agentenfortsetzung und erscheinen möglicherweise nicht im anderen geöffneten Client.",
 "Tool image":"Werkzeugbild",
 "Image attachment":"Bildanhang",
