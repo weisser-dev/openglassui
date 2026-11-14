@@ -225,7 +225,7 @@ For the Meta developer flow see [Meta setup](docs/META_SETUP.md). For device-neu
 
 OpenGlassUI is available under the [MIT License](LICENSE).
 
-Paired-device activity counts generated suggestions, their approximate whitespace-delimited word count, and suggestions copied into a draft. These counts start with this feature and are stored locally with task metadata. The wearable composer does not identify speech versus handwriting, and provider token totals are not available for these suggestions.
+Paired-device activity counts words in submitted prompts, generated suggestions, their approximate whitespace-delimited word count, and suggestions copied into a draft. Sent words are counted when the companion accepts a request, including later-failed requests, and include speech, handwriting, typed text and submitted suggestions. Counts use Unicode word segmentation where available and begin with this feature; earlier requests are not backfilled. These counts start with this feature and are stored locally with task metadata. The wearable composer does not identify speech versus handwriting, and provider token totals are not available for these suggestions.
 
 Imported Claude and Codex chats load the latest ten entries, then retrieve older pages from the local companion. The provider SDK may still read the complete local session internally. Embedded PNG, JPEG, GIF and WebP image blocks up to 1 MiB are shown from the selected session; local paths, remote URLs, unsupported formats and oversized images are not fetched.
 

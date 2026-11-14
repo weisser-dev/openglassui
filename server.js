@@ -109,13 +109,15 @@ function updateTaskEvent(task,event){
  if(typeof event.status==='string' && event.status.trim())item.status=event.status.slice(0,40);
  changed();
 }
+const wordSegmenter=typeof Intl.Segmenter==='function'?new Intl.Segmenter(undefined,{granularity:'word'}):null;
+function countSentWords(text){return wordSegmenter?[...wordSegmenter.segment(text)].filter(part=>part.isWordLike).length:(text.match(/\S+/gu)||[]).length;}
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
 function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), model, fromPairedDevice=false) {
   const workspace = project.path;
   const args = oldTask && !['kiro','opencode'].includes(agent.id) && !isGenericAcp(agent) ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
   if ((!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string')) throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
   const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
-  if(fromPairedDevice)task.pairedRequests=(task.pairedRequests||0)+1;let countedCompletion=false;const countCompletion=()=>{if(fromPairedDevice&&!countedCompletion&&task.status==='completed'){task.pairedCompleted=(task.pairedCompleted||0)+1;countedCompletion=true;}};
+  if(fromPairedDevice){task.pairedRequests=(task.pairedRequests||0)+1;task.pairedSentWords=(task.pairedSentWords||0)+countSentWords(prompt);}let countedCompletion=false;const countCompletion=()=>{if(fromPairedDevice&&!countedCompletion&&task.status==='completed'){task.pairedCompleted=(task.pairedCompleted||0)+1;countedCompletion=true;}};
   startConversationTurn(task,prompt.trim());task.status = 'running'; task.lastMessageAt=new Date().toISOString(); task.trackedMessages=(task.trackedMessages || 0)+1; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
   tasks.set(task.id, task); save();
   if (['kiro','opencode'].includes(agent.id) || isGenericAcp(agent)) {

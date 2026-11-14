@@ -63,6 +63,8 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   const pushPost=(url,data)=>fetch(gateway+url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(data)});
   assert.equal((await pushPost('/api/push/subscription',{subscription:{...subscription,endpoint:'https://127.0.0.1/private'}})).status,400);
   assert.equal((await pushPost('/api/push/subscription',{subscription})).status,200);assert.equal((await pushStatus()).enabled,true);
+  const pairedRequest=await fetch(gateway+'/api/tasks',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({agentId:'mock',prompt:'Hallo, Welt!'})});assert.equal(pairedRequest.status,201);const pairedTask=await pairedRequest.json();assert.equal(pairedTask.pairedSentWords,2);assert.equal(pairedTask.pairedRequests,1);
+  const counted=(await(await fetch(base+'/api/state')).json()).tasks.find(item=>item.id===pairedTask.id);assert.equal(counted.pairedSentWords,2);assert.equal(task.pairedSentWords,undefined);
   const visibleDevices=await (await fetch(base+'/api/devices')).json();assert.equal(visibleDevices.devices[0].pushEnabled,true);assert.equal(JSON.stringify(visibleDevices).includes(subscription.endpoint),false);
   assert.equal((await pushPost('/api/push/unsubscribe',{})).status,200);assert.equal((await pushStatus()).enabled,false);
   const invalidSocket=new WebSocket(`ws://127.0.0.1:${Number(port)+1}/api/events`);const invalidClosed=new Promise(resolve=>{invalidSocket.once('open',()=>invalidSocket.send('null'));invalidSocket.once('close',resolve);});assert.equal(await invalidClosed,1008);assert.equal((await fetch(base+'/api/state')).status,200);

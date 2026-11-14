@@ -4,6 +4,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Count words sent from paired devices across all input methods, without inferring whether the text was spoken.
+
 ## [0.1.2] - 2026-11-14
 
 - Improve the dashboard, device management, pairing and setup layouts for small touchscreens.
