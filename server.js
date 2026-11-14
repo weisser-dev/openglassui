@@ -57,7 +57,7 @@ function saveProjects() {const snapshot=JSON.stringify([...projects.values()].fi
 
 let stored = [];
 try { stored = JSON.parse(await readFile(storePath, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-const tasks = new Map(stored.map(t => { const {pendingDecision,externalActivity,...rest}=t; return [t.id, {...rest, status: t.status === 'running' ? 'interrupted' : t.status}]; }));
+const tasks = new Map(stored.map(t => { const {pendingDecision,externalActivity,canSteer,...rest}=t; return [t.id, {...rest, status: t.status === 'running' ? 'interrupted' : t.status}]; }));
 const devicesPath=path.join(dataDir,'devices.json');
 let savedDevices=[];try{savedDevices=JSON.parse(await readFile(devicesPath,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
 const devices=new Map(savedDevices.map(device=>[device.id,device]));
@@ -111,12 +111,13 @@ function updateTaskEvent(task,event){
 }
 const wordSegmenter=typeof Intl.Segmenter==='function'?new Intl.Segmenter(undefined,{granularity:'word'}):null;
 function countSentWords(text){return wordSegmenter?[...wordSegmenter.segment(text)].filter(part=>part.isWordLike).length:(text.match(/\S+/gu)||[]).length;}
+function compactTaskTitle(prompt){const text=String(prompt).replace(/\s+/gu,' ').trim();if([...text].length<=72)return text;const short=[...text].slice(0,69).join('');const boundary=short.lastIndexOf(' ');return (boundary>=35?short.slice(0,boundary):short).trimEnd()+'…';}
 function publicTaskInput(input) { return typeof input.prompt === 'string' && input.prompt.trim() && input.prompt.length <= 8000; }
 function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), model, fromPairedDevice=false) {
   const workspace = project.path;
   const args = oldTask && !['kiro','opencode'].includes(agent.id) && !isGenericAcp(agent) ? agent.resumeArgs?.map(a => a === '{sessionId}' ? oldTask.sessionId : a) : agent.args;
   if ((!Array.isArray(args) || !args.every(a => typeof a === 'string') || agent.input !== 'stdin' || typeof agent.command !== 'string')) throw new Error('Dieser Agent unterstützt die Aktion nicht oder ist ungültig konfiguriert.');
-  const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
+  const task = oldTask || { id:randomUUID(), agentId:agent.id, agentName:agent.name, prompt:prompt.trim(), title:compactTaskTitle(prompt), status:'running', output:'', createdAt:new Date().toISOString(), sessionId:null, projectId:project.id, projectName:project.name };
   if(fromPairedDevice){task.pairedRequests=(task.pairedRequests||0)+1;task.pairedSentWords=(task.pairedSentWords||0)+countSentWords(prompt);}let countedCompletion=false;const countCompletion=()=>{if(fromPairedDevice&&!countedCompletion&&task.status==='completed'){task.pairedCompleted=(task.pairedCompleted||0)+1;countedCompletion=true;}};
   startConversationTurn(task,prompt.trim());task.status = 'running'; task.lastMessageAt=new Date().toISOString(); task.trackedMessages=(task.trackedMessages || 0)+1; if (oldTask) task.output += `\n\n> ${prompt.trim()}\n`;
   tasks.set(task.id, task); save();
@@ -129,9 +130,9 @@ function run(agent, prompt, oldTask, project = projectById(oldTask?.projectId), 
   }
   if (agent.id === 'codex') {
     const handle=runCodex({prompt,workspace,sessionId:oldTask?.sessionId,command:agent.command,model,
-      onSession(id,actualModel){task.sessionId=id;if(actualModel)task.model=actualModel;save();},onModel(actualModel){task.model=actualModel;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage=usage;save();},
+      onSession(id,actualModel){task.sessionId=id;if(actualModel)task.model=actualModel;save();},onTurn(){task.canSteer=true;save();},onModel(actualModel){task.model=actualModel;save();},onText(text){if(text)task.lastMessageAt=new Date().toISOString();appendAssistantText(task,text);task.output=(task.output+text).slice(-100000);changed();},onEvent(event){updateTaskEvent(task,event);},onUsage(usage){task.usage=usage;save();},
       onDecision(decision){return queueDecision(task,decision);},
-      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;cancelDecisions(task);countCompletion();save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
+      onDone(error){if(error){appendTranscriptText(task,error.message);task.output+=`\n${error.message}`;if(task.status!=='stopped')task.status='failed';}else if(task.status!=='stopped')task.status='completed';delete task.process;delete task.canSteer;cancelDecisions(task);countCompletion();save();if(task.status==='completed'||task.status==='failed')notifyPush(task.status);}});
     task.process=handle;return task;
   }
   if (agent.id === 'claude') {
@@ -185,7 +186,7 @@ const handler = async (req, res) => {
         let timer; const finish=()=>{clearTimeout(timer);watchers.delete(finish);if(!res.writableEnded && !res.destroyed)json(res,200,{revision});};
         watchers.add(finish); timer=setTimeout(finish,25000); res.on('close',()=>{clearTimeout(timer);watchers.delete(finish);}); return;
       }
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(task=>{const data=exposed(task);if(!isLocal&&data.prompt==='Importierte Sitzung'&&Array.isArray(data.snapshotMessages)){data.snapshotMessages=data.snapshotMessages.slice(-10);data.output='';}return data;}).reverse()});
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(task=>{const data=exposed(task);if(url.searchParams.get('view')==='wearable'&&data.id!==url.searchParams.get('task')){for(const key of ['messages','snapshotMessages'])if(Array.isArray(data[key]))data[key]=data[key].slice(-10).map(message=>({...message,text:typeof message.text==='string'?message.text.slice(-600):message.text}));if(typeof data.output==='string')data.output=data.output.slice(-4000);if(typeof data.prompt==='string'&&data.prompt!=='Importierte Sitzung')data.prompt=data.prompt.slice(0,200);delete data.events;}else if(!isLocal&&data.prompt==='Importierte Sitzung'&&Array.isArray(data.snapshotMessages)){data.snapshotMessages=data.snapshotMessages.slice(-10);data.output='';}return data;}).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
       if(url.pathname==='/api/hooks/claude/activity'){
        if(!isLocal)return json(res,403,{error:'Local hook only.'});const input=await body(req);if(!/^[a-f0-9-]{36}$/i.test(input.sessionId||'')||!['UserPromptSubmit','PreToolUse','Stop','SessionEnd'].includes(input.event))return json(res,400,{error:'Invalid activity event.'});for(const task of tasks.values())if(task.agentId==='claude'&&task.sessionId===input.sessionId&&task.prompt==='Importierte Sitzung'&&!task.process)task.externalActivity={status:input.event==='SessionEnd'?'unknown':input.event==='Stop'?'idle':'working',at:new Date().toISOString()};changed();return json(res,200,{ok:true});
@@ -277,6 +278,8 @@ const handler = async (req, res) => {
         if (input.type==='deny') {resolve({type:'deny'});return json(res,200,{ok:true});}
         return json(res,400,{error:'Ungültige Antwort.'});
       }
+      const steerMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/steer$/);
+      if(steerMatch){const input=await body(req);const task=tasks.get(steerMatch[1]);if(!task)return json(res,404,{error:'Task not found.'});if(!publicTaskInput(input))return json(res,400,{error:'Enter a message of up to 8000 characters.'});if(task.status!=='running'||!task.canSteer||typeof task.process?.steer!=='function'||task.pendingDecision)return json(res,409,{error:'This task cannot accept live input right now.'});try{await task.process.steer(input.prompt.trim());}catch{return json(res,409,{error:'The active turn ended or could not accept the message.'});}startConversationTurn(task,input.prompt.trim());task.lastMessageAt=new Date().toISOString();task.trackedMessages=(task.trackedMessages||0)+1;if(!isLocal){task.pairedRequests=(task.pairedRequests||0)+1;task.pairedSentWords=(task.pairedSentWords||0)+countSentWords(input.prompt);}save();return json(res,200,{ok:true});}
       const match=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/(stop|resume)$/);
       if (match) {
         const task=tasks.get(match[1]); if (!task) return json(res,404,{error:'Aufgabe nicht gefunden.'});

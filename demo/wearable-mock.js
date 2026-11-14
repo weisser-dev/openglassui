@@ -10,7 +10,7 @@ window.openGlassDemoState.tasks[1].messages=[{role:'user',text:'Show me an examp
 window.openGlassDemoState.tasks[0].status='running';
 window.openGlassDemoState.tasks[0].pendingDecision={id:'demo-decision',kind:'question',input:{questions:[{question:'How should the example be formatted?',options:[{label:'Keep it simple',description:'Use one short example'},{label:'Add an explanation',description:'Include a short explanation'}]}]}};
 window.openGlassDemoApi=async(url,options={})=>{
- if(url==='/api/state')return window.openGlassDemoState;
+ if(url==='/api/state'||url.startsWith('/api/state?'))return window.openGlassDemoState;
  if(url.startsWith('/api/models')){const agent=/[?&]agent=([^&]+)/.exec(url)?.[1],models=demoModels[agent]||[];return {supported:models.length>0,models};}
  if(url.startsWith('/api/sessions?'))return {sessions:[]};
  if(url==='/api/tasks'){const input=JSON.parse(options.body),id=`demo-${Date.now()}`;window.openGlassDemoState.tasks.unshift({id,agentId:input.agentId,agentName:window.openGlassDemoState.agents.find(a=>a.id===input.agentId)?.name||'Agent',projectId:input.projectId,projectName:'Hello world',prompt:input.prompt,status:'completed',model:input.model,createdAt:new Date().toISOString(),lastMessageAt:new Date().toISOString(),sessionId:id,messages:[{role:'user',text:input.prompt},{role:'assistant',text:'This is a simulated response. No agent was contacted.'}]});return {id};}

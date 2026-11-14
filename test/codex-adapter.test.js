@@ -36,3 +36,10 @@ test('Codex stop terminates an unresponsive app server',async()=>{
  await writeFile(file,script);await chmod(file,0o755);
  try{let handle;const result=new Promise(resolve=>{handle=runCodex({workspace:dir,command:file,prompt:'Test',onSession(){},onText(){},onEvent(){handle.kill();},onDecision:async()=>({type:'deny'}),onDone:resolve});});const error=await result;assert.match(error.message,/Gestoppt/);}finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('a running OpenGlassUI Codex turn accepts follow-up input on its own app server',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'og-codex-steer-'));const file=path.join(dir,'codex');
+ const script=`#!${process.execPath}
+ const readline=require('node:readline');const send=x=>console.log(JSON.stringify(x));readline.createInterface({input:process.stdin}).on('line',s=>{const m=JSON.parse(s);if(m.method==='initialize')send({id:m.id,result:{}});if(m.method==='thread/start')send({id:m.id,result:{thread:{id:'thread'}}});if(m.method==='turn/start')send({id:m.id,result:{turn:{id:'turn'}}});if(m.method==='turn/steer'){if(m.params.threadId!=='thread'||m.params.expectedTurnId!=='turn'||m.params.input[0].text!=='Follow up')send({id:m.id,error:{message:'bad steer'}});else {send({id:m.id,result:{turnId:'turn'}});setTimeout(()=>send({method:'turn/completed',params:{threadId:'thread',turn:{status:'completed'}}}),30);}}});`;
+ await writeFile(file,script);await chmod(file,0o755);try{let handle,ready;const started=new Promise(resolve=>ready=resolve);const done=new Promise((resolve,reject)=>{handle=runCodex({workspace:dir,command:file,prompt:'Start',onSession(){},onTurn:ready,onText(){},onDecision:async()=>({type:'deny'}),onDone:e=>e?reject(e):resolve()});});await started;await handle.steer('Follow up');await done;await assert.rejects(handle.steer('Too late'));}finally{await rm(dir,{recursive:true,force:true});}
+});

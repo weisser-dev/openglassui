@@ -22,7 +22,7 @@ window.createSessionTitleResolver=function(api,onUpdate=()=>{}){
  return {enrich,remember(agentId,projectId,sessionId,title){if(typeof title!=='string'||!title.trim())return;const group=`${agentId}\u0000${projectId||'default'}`;known.set(`${group}\u0000${sessionId}`,title.trim().slice(0,200));persist();}};
 };
 window.cleanImportedTranscript=function(text){return String(text||'').replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi,'').replace(/\n{3,}/g,'\n\n').trim();};
-window.taskDisplayTitle=function(task,fallback='Imported session'){return task.title||(task.prompt&&task.prompt!=='Importierte Sitzung'?task.prompt:fallback);};
+window.taskDisplayTitle=function(task,fallback='Imported session'){const text=String(task.title||(task.prompt&&task.prompt!=='Importierte Sitzung'?task.prompt:fallback)).replace(/\s+/gu,' ').trim();if([...text].length<=72)return text;const shortened=[...text].slice(0,69).join('');const boundary=shortened.lastIndexOf(' ');return (boundary>=35?shortened.slice(0,boundary):shortened).trimEnd()+'…';};
 // Show one entry per provider session without deleting any stored task history.
 window.uniqueSessionTasks=function(tasks){
  const result=[],indices=new Map();

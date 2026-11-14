@@ -4,6 +4,10 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Reduce wearable overview payloads and load the selected chat in full when opened.
+- Allow live follow-up input to OpenGlassUI-owned Codex turns from paired devices. Other clients’ active turns are not attached.
+- Give new tasks compact local titles and limit long titles in wearable navigation.
+
 - Count words sent from paired devices across all input methods, without inferring whether the text was spoken.
 
 ## [0.1.2] - 2026-11-14

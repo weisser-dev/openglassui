@@ -21,3 +21,6 @@ test('Claude slash-command envelopes are identified without treating arbitrary m
  const item=window.parseWearableCommand('<command-message>loop</command-message> <command-name>/loop</command-name> <command-args>Review the example</command-args>');assert.equal(item.name,'/loop');assert.equal(item.body,'Review the example');assert.equal(window.parseWearableCommand('Please show <command-name>/loop</command-name>'),null);assert.equal(window.parseWearableCommand('<command-name>/bad<script></command-name>'),null);
  assert.equal(window.isWearableInterruption('[Request interrupted by user for tool use]'),true);assert.equal(window.isWearableInterruption('I interrupted a request'),false);
 });
+test('long prompts and titles are compact in navigation without modifying the original',()=>{
+ const prompt='A long request with details about the project '.repeat(10);const task={prompt};const title=window.taskDisplayTitle(task);assert.ok([...title].length<=72);assert.match(title,/…$/);assert.equal(task.prompt,prompt);assert.equal(window.taskDisplayTitle({title:'Short title',prompt}),'Short title');
+});

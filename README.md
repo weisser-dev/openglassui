@@ -232,3 +232,9 @@ Imported Claude and Codex chats load the latest ten entries, then retrieve older
 The optional `openglassui --enable-claude-hook` integration also registers local Claude Code activity hooks. They send only the session ID and lifecycle event to the local companion, and never grant permissions. Activity is unknown until a hook event arrives and can become stale if events are missed or the companion restarts. Claude clients must support and load these hooks; existing sessions may need to reload their settings. Codex external activity is not currently reported by this integration.
 
 While a read-only imported Claude or Codex chat is open and visible, OpenGlassUI checks its saved history approximately every three seconds, with overlapping reads suppressed. Once continued through OpenGlassUI, the current implementation tracks its own run rather than continuing that external-history polling. Live OpenGlassUI-managed runs use WebSocket events. The agent SDK may take additional time, and an existing session in another client is not directly controlled through that client’s live connection; replies are separate continuation attempts.
+
+### Shared sessions and live input
+
+Paired OpenGlassUI clients connected to the same companion share its task state. A running Codex turn started by OpenGlassUI can receive a follow-up from another paired OpenGlassUI client once the turn is ready. Approval requests still require an explicit decision. Claude follow-ups currently wait until an OpenGlassUI run finishes. Importing a session from Codex or Claude Desktop does not attach OpenGlassUI to that application’s running process: history monitoring and a separate continuation are not live co-editing.
+
+Long new prompts receive a short locally derived title; no additional model request is made. The complete prompt remains in the conversation. A public tunnel can add latency even when devices share Wi-Fi.
