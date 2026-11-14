@@ -11,5 +11,7 @@ export async function enableClaudePermissionHook({configDir=process.env.CLAUDE_C
  const hookPath=fileURLToPath(new URL('./bin/claude-permission-hook.js',import.meta.url)),command=`${quote(node)} ${quote(hookPath)}`;
  settings.hooks ||= {};const existing=settings.hooks.PermissionRequest||[];if(!Array.isArray(existing))throw new Error('Invalid PermissionRequest hooks. No changes made.');
  if(!existing.some(group=>Array.isArray(group.hooks)&&group.hooks.some(hook=>hook.command===command)))existing.push({hooks:[{type:'command',command,timeout:120}]});settings.hooks.PermissionRequest=existing;
+ const activityPath=fileURLToPath(new URL('./bin/claude-activity-hook.js',import.meta.url)),activityCommand=`${quote(node)} ${quote(activityPath)}`;
+ for(const event of ['UserPromptSubmit','PreToolUse','Stop','SessionEnd']){const groups=settings.hooks[event]||[];if(!Array.isArray(groups))throw new Error(`Invalid ${event} hooks. No changes made.`);if(!groups.some(group=>Array.isArray(group.hooks)&&group.hooks.some(hook=>hook.command===activityCommand)))groups.push({hooks:[{type:'command',command:activityCommand,timeout:2}]});settings.hooks[event]=groups;}
  await mkdir(configDir,{recursive:true,mode:0o700});const temp=path.join(configDir,`.openglassui-settings-${process.pid}.tmp`);await writeFile(temp,JSON.stringify(settings,null,2)+'\n',{mode:0o600});await rename(temp,file);return file;
 }

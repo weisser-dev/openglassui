@@ -222,3 +222,7 @@ For the Meta developer flow see [Meta setup](docs/META_SETUP.md). For device-neu
 OpenGlassUI is available under the [MIT License](LICENSE).
 
 Paired-device activity counts generated suggestions, their approximate whitespace-delimited word count, and suggestions copied into a draft. These counts start with this feature and are stored locally with task metadata. The wearable composer does not identify speech versus handwriting, and provider token totals are not available for these suggestions.
+
+Imported Claude and Codex chats load the latest ten entries, then retrieve older pages from the local companion. The provider SDK may still read the complete local session internally. Embedded PNG, JPEG, GIF and WebP image blocks up to 1 MiB are shown from the selected session; local paths, remote URLs, unsupported formats and oversized images are not fetched.
+
+The optional `openglassui --enable-claude-hook` integration also registers local Claude Code activity hooks. They send only the session ID and lifecycle event to the local companion, and never grant permissions. Activity is unknown until a hook event arrives and can become stale if events are missed or the companion restarts. Claude clients must support and load these hooks; existing sessions may need to reload their settings. Codex external activity is not currently reported by this integration.

@@ -4,6 +4,9 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Page imported histories, display validated embedded image attachments, and support optional Claude activity events.
+- Add animated gesture illustrations to the wearable tour.
+
 - Show locally counted suggestion activity for paired devices; indicate when speech and token metrics are unavailable.
 
 - Monitor imported Claude Code and Codex histories in the background, present separate message bubbles, and group duplicate imports by provider session. External approvals remain unavailable.

@@ -41,10 +41,10 @@ export async function readLatestClaudeMessages(id,workspace,readMessages=getSess
  const messages=await readMessages(id,{dir:workspace});
  return messages.filter(item=>{if(!['user','assistant'].includes(item?.type))return false;const content=item.message?.content;return typeof content==='string'&&content.trim()!==''||Array.isArray(content)&&content.some(part=>part?.type==='text'&&typeof part.text==='string'&&part.text.trim()!=='');}).slice(-100);
 }
-export async function readAgentSession(agent,id,workspace,command='codex') {
+export async function readAgentSession(agent,id,workspace,command='codex',{full=false}={}) {
  if(!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Ungültige Sitzungs-ID.');
  const sessions=await listAgentSessions(agent,workspace,command);if(!sessions.some(s=>s.id===id))throw new Error('Sitzung nicht im konfigurierten Projekt gefunden.');
- if(agent==='claude')return await readLatestClaudeMessages(id,workspace);
+ if(agent==='claude')return full?await getSessionMessages(id,{dir:workspace}):await readLatestClaudeMessages(id,workspace);
  return (await codexRequest('thread/read',{threadId:id,includeTurns:true},command)).thread;
 }
 export function runClaude({prompt,workspace,sessionId,model,onModels=()=>{},onMessage,onDecision,onDone,queryImpl=query}) {

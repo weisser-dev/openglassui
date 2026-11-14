@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+// Optional, best-effort local status signal; never sends prompt or tool input.
+let raw='';try{for await(const chunk of process.stdin){raw+=chunk;if(raw.length>1000000)throw Error('input too large');}const input=JSON.parse(raw);if(!['UserPromptSubmit','PreToolUse','Stop','SessionEnd'].includes(input.hook_event_name)||!/^[a-f0-9-]{36}$/i.test(input.session_id||''))throw Error('invalid');const port=Number(process.env.OPENGLASS_PORT||4173),origin=`http://127.0.0.1:${port}`;await fetch(`${origin}/api/hooks/claude/activity`,{method:'POST',headers:{'Content-Type':'application/json',Origin:origin},body:JSON.stringify({sessionId:input.session_id,event:input.hook_event_name}),signal:AbortSignal.timeout(800)});}catch{}process.stdout.write('{}');

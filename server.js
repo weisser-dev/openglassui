@@ -1,3 +1,4 @@
+import { getSessionPage } from './session-pages.js';
 import http from 'node:http';
 import { readFile, realpath, mkdir, writeFile, rename, access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
@@ -54,7 +55,7 @@ function saveProjects() {const snapshot=JSON.stringify([...projects.values()].fi
 
 let stored = [];
 try { stored = JSON.parse(await readFile(storePath, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-const tasks = new Map(stored.map(t => { const {pendingDecision,...rest}=t; return [t.id, {...rest, status: t.status === 'running' ? 'interrupted' : t.status}]; }));
+const tasks = new Map(stored.map(t => { const {pendingDecision,externalActivity,...rest}=t; return [t.id, {...rest, status: t.status === 'running' ? 'interrupted' : t.status}]; }));
 const devicesPath=path.join(dataDir,'devices.json');
 let savedDevices=[];try{savedDevices=JSON.parse(await readFile(devicesPath,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
 const devices=new Map(savedDevices.map(device=>[device.id,device]));
@@ -69,7 +70,7 @@ function changed(){revision++;for(const notify of [...watchers])notify();for(con
 const port = Number(process.env.PORT || 4173), gatewayPort=Number(process.env.OPENGLASS_GATEWAY_PORT || port+1), host = '127.0.0.1';
 if(!Number.isInteger(port) || !Number.isInteger(gatewayPort) || port<1 || gatewayPort<1 || port>65535 || gatewayPort>65535 || port===gatewayPort) throw new Error('Ungültiger lokaler oder Gateway-Port.');
 const tunnel=createTunnelManager({port:gatewayPort});const tunnelInstaller=createCloudflaredInstaller();
-const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png', '.json':'application/json; charset=utf-8' };
+const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png', '.gif':'image/gif', '.json':'application/json; charset=utf-8' };
 function json(res, status, data) { res.writeHead(status, { 'Content-Type':'application/json', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer' }); res.end(JSON.stringify(data)); }
 function exposed(task) { const { process, ...data } = task; return data; }
 let saveQueue = Promise.resolve();
@@ -160,6 +161,8 @@ const handler = async (req, res) => {
       if (!isLocal && !authorized(req)) return json(res,401,{error:'Bitte zuerst koppeln.'});
       if(!isLocal)markDeviceSeen(requestDevice(req));
       if (req.method === 'GET' && url.pathname === '/api/sessions') { const agent=url.searchParams.get('agent'); const cfg=agents.find(a=>a.id===agent); const project=projectById(url.searchParams.get('projectId') || 'default'); if(!cfg || (!['claude','codex','kiro','opencode'].includes(agent)&&!isGenericAcp(cfg))) return json(res,400,{error:'Agent nicht unterstützt.'}); const sessions=await (isGenericAcp(cfg)?createAcpClient(cfg).listSessions(project.path):agent==='kiro'?listKiroSessions(project.path,cfg.command):agent==='opencode'?listOpenCodeSessions(project.path,cfg.command):listAgentSessions(agent,project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{sessions}); }
+      const pageMatch=url.pathname.match(/^\/api\/sessions\/(claude|codex)\/([a-f0-9-]{36})\/page$/i);
+      if(req.method==='GET'&&pageMatch){const cfg=agents.find(a=>a.id===pageMatch[1]);if(!cfg)return json(res,404,{error:'Agent unavailable.'});const project=projectById(url.searchParams.get('projectId')||'default'),raw=url.searchParams.get('before');const before=raw===null?undefined:Number(raw);if(before!==undefined&&(!Number.isSafeInteger(before)||before<0))return json(res,400,{error:'Invalid page cursor.'});const session=await readAgentSession(cfg.id,pageMatch[2],project.path,cfg.command,{full:true});assertCurrentAccess(req);return json(res,200,getSessionPage(session,{before}));}
       const sessionMatch=url.pathname.match(/^\/api\/sessions\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/i);
       if (req.method === 'GET' && sessionMatch) { const cfg=agents.find(a=>a.id===sessionMatch[1]); if(!cfg || (!['codex','claude','kiro','opencode'].includes(cfg.id)&&!isGenericAcp(cfg)))return json(res,404,{error:'Agent not configured or does not support session browsing.'}); const project=projectById(url.searchParams.get('projectId') || 'default'); const session=await (isGenericAcp(cfg)?createAcpClient(cfg).readSession(project.path,sessionMatch[2]):sessionMatch[1]==='kiro'?readKiroSession(project.path,sessionMatch[2],cfg.command):sessionMatch[1]==='opencode'?readOpenCodeSession(project.path,sessionMatch[2],cfg.command):readAgentSession(sessionMatch[1],sessionMatch[2],project.path,cfg.command));assertCurrentAccess(req);return json(res,200,{session,text:formatSession(session,sessionMatch[1])}); }
       if (req.method === 'GET' && url.pathname === '/api/models') {const agent=agents.find(a=>a.id===url.searchParams.get('agent'));if(agent&&(agent.id==='claude'||['kiro','opencode'].includes(agent.id)||isGenericAcp(agent))){const task=tasks.get(url.searchParams.get('task'));return json(res,200,{models:task?.agentId===agent.id?task.models||[]:[],supported:Boolean(task?.agentId===agent.id&&task.models?.length)});}if(!agent || agent.id!=='codex')return json(res,200,{models:[],supported:false});const models=await listCodexModels(agent.command);assertCurrentAccess(req);return json(res,200,{models,supported:true});}
@@ -178,8 +181,11 @@ const handler = async (req, res) => {
         let timer; const finish=()=>{clearTimeout(timer);watchers.delete(finish);if(!res.writableEnded && !res.destroyed)json(res,200,{revision});};
         watchers.add(finish); timer=setTimeout(finish,25000); res.on('close',()=>{clearTimeout(timer);watchers.delete(finish);}); return;
       }
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(exposed).reverse()});
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(task=>{const data=exposed(task);if(!isLocal&&data.prompt==='Importierte Sitzung'&&Array.isArray(data.snapshotMessages)){data.snapshotMessages=data.snapshotMessages.slice(-10);data.output='';}return data;}).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
+      if(url.pathname==='/api/hooks/claude/activity'){
+       if(!isLocal)return json(res,403,{error:'Local hook only.'});const input=await body(req);if(!/^[a-f0-9-]{36}$/i.test(input.sessionId||'')||!['UserPromptSubmit','PreToolUse','Stop','SessionEnd'].includes(input.event))return json(res,400,{error:'Invalid activity event.'});for(const task of tasks.values())if(task.agentId==='claude'&&task.sessionId===input.sessionId&&task.prompt==='Importierte Sitzung'&&!task.process)task.externalActivity={status:input.event==='SessionEnd'?'unknown':input.event==='Stop'?'idle':'working',at:new Date().toISOString()};changed();return json(res,200,{ok:true});
+      }
       if(url.pathname==='/api/hooks/claude/permission'){
         if(!isLocal)return json(res,403,{error:'Local hook only.'});const input=await body(req);
         if(input.hook_event_name!=='PermissionRequest'||typeof input.session_id!=='string'||typeof input.tool_name!=='string'||!input.tool_input||typeof input.tool_input!=='object'||Array.isArray(input.tool_input))return json(res,400,{error:'Invalid permission request.'});
@@ -279,7 +285,7 @@ const handler = async (req, res) => {
     }
     if (req.method !== 'GET') return json(res,405,{error:'Nicht unterstützt.'});
     const filename=url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','wearable-audio.js','wearable-navigation.js','recent-chats.js','glass-i18n.js','theme.js','sw.js','favicon.svg','setup-glasses.png','setup.js','i18n.js','.well-known/meta-wearables-manifest.json','icons/app-icon.svg'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
+    if (!['index.html','app.js','style.css','glass.html','glass.js','glass.css','sessions-ui.js','decisions.js','simulator.html','simulator.css','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','wearable-audio.js','wearable-navigation.js','recent-chats.js','glass-i18n.js','theme.js','sw.js','favicon.svg','setup-glasses.png','setup.js','i18n.js','.well-known/meta-wearables-manifest.json','icons/app-icon.svg','icons/gestures/swipe.gif','icons/gestures/select.gif','icons/gestures/back.gif'].includes(filename)) return json(res,404,{error:'Nicht gefunden.'});
     const data=await readFile(path.join(root,'public',filename));
     res.writeHead(200,{'Content-Type':types[path.extname(filename)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'"}); res.end(data);
   } catch (error) { json(res,error.status || 400,{error:error.message}); }

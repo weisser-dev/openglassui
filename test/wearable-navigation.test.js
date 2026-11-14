@@ -67,11 +67,11 @@ test('chat focus explicitly scrolls into view and does not steal focus later',()
 
 test('opening an imported history refreshes its snapshot and keeps editing focus',async()=>{
  const source=await readFile(new URL('../public/glass.js',import.meta.url),'utf8');const start=source.indexOf('async function refreshImportedHistory('),end=source.indexOf('\nfunction heading(',start);
- let requested='',updates=0,rendered=0,focuses=0;const active={matches:()=>true};const document={activeElement:active,querySelectorAll:()=>[]};
- const sandbox=vm.createContext({document,window:{formatProviderSession:()=>[]},api:async url=>{requested=url;return {text:'updated history'};},updateChatWhileEditing:()=>updates++,render:()=>rendered++,focusScreen:()=>focuses++,setError(){},t:x=>x});
- vm.runInContext(`const importedSnapshots=new Map();const refreshingSnapshots=new Set();let state={tasks:[{id:'x',prompt:'Importierte Sitzung',agentId:'claude',sessionId:'sid',projectId:'p'}]},route={page:'chat'},selectedTask='x';${source.slice(start,end)}`,sandbox);
+ let requested='',updates=0,rendered=0,focuses=0;const active={matches:()=>true};const document={activeElement:active,documentElement:{scrollHeight:100},querySelectorAll:()=>[]};
+ const sandbox=vm.createContext({document,window:{formatProviderSession:()=>[],scrollY:0},api:async url=>{requested=url;return {messages:[{role:'assistant',text:'updated history'}],total:1,nextBefore:null};},updateChatWhileEditing:()=>updates++,render:()=>rendered++,focusScreen:()=>focuses++,setError(){},t:x=>x});
+ vm.runInContext(`const importedSnapshots=new Map();const pagedHistory=new Map();const refreshingSnapshots=new Set();let state={tasks:[{id:'x',prompt:'Importierte Sitzung',agentId:'claude',sessionId:'sid',projectId:'p'}]},route={page:'chat'},selectedTask='x';${source.slice(start,end)}`,sandbox);
  await vm.runInContext("refreshImportedHistory('x')",sandbox);
- assert.equal(requested,'/api/sessions/claude/sid?projectId=p');assert.equal(updates,1);assert.equal(rendered,0);assert.equal(focuses,0);assert.equal(vm.runInContext("importedSnapshots.get('x').text",sandbox),'updated history');
+ assert.equal(requested,'/api/sessions/claude/sid/page?projectId=p');assert.equal(updates,1);assert.equal(rendered,0);assert.equal(focuses,0);assert.equal(vm.runInContext("pagedHistory.get('x').messages[0].text",sandbox),'updated history');
 });
 
 

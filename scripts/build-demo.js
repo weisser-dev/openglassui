@@ -1,6 +1,8 @@
 import {mkdir,readFile,writeFile,copyFile} from 'node:fs/promises';
 const assets=['glass.css','theme.js','i18n.js','glass-i18n.js','usage.js','notifications.js','spatial.js','webmcp.js','events.js','push-client.js','decisions.js','wearable-audio.js','wearable-navigation.js','recent-chats.js','glass.js','favicon.svg'];
 await mkdir('demo/wearable',{recursive:true});
+await mkdir('demo/wearable/icons/gestures',{recursive:true});
+for(const name of ['swipe','select','back'])await copyFile(`public/icons/gestures/${name}.gif`,`demo/wearable/icons/gestures/${name}.gif`);
 await copyFile('public/theme.js','demo/theme.js');
 await copyFile('public/setup-glasses.png','demo/setup-glasses.png');
 for(const name of assets)await copyFile(`public/${name}`,`demo/wearable/${name}`);
