@@ -4,6 +4,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Improve the dashboard, device management, pairing and setup layouts for small touchscreens.
+
 - Render Markdown tables as narrow labelled rows and fenced code as readable blocks in the wearable view; add example content to the public demo.
 
 - Improve wearable send feedback, post-dictation focus, approval focus and visibility above the composer. Refresh visible imported chats more frequently without unnecessary redraws.
