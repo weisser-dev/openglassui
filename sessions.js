@@ -23,7 +23,7 @@ async function codexRequest(method, params, command='codex') {
 export async function listCodexModels(command='codex') {const result=await codexRequest('model/list',{limit:100,includeHidden:false},command);return (result.data||[]).filter(item=>typeof item.id==='string').map(item=>({id:item.id,name:item.displayName||item.id}));}
 export async function listAgentSessions(agent, workspace, command='codex') {
  if(agent==='claude') return (await listSessions({dir:workspace,includeWorktrees:false})).filter(s=>!s.cwd || s.cwd===workspace).map(s=>({id:s.sessionId,agent,title:s.customTitle||s.summary||s.firstPrompt||'Claude-Sitzung',updatedAt:s.lastModified}));
- if(agent==='codex') {const result=await codexRequest('thread/list',{cwd:workspace,limit:50,sortKey:'updated_at'},command);return result.data.map(s=>({id:s.id,agent,title:s.name||s.preview||'Codex-Sitzung',updatedAt:s.updatedAt}));}
+ if(agent==='codex') {const result=await codexRequest('thread/list',{cwd:workspace,limit:50,sortKey:'updated_at',sourceKinds:['cli','vscode','exec','appServer']},command);return result.data.map(s=>({id:s.id,agent,title:s.name||s.preview||'Codex-Sitzung',updatedAt:s.updatedAt}));}
  throw new Error('Nicht unterstützter Agent.');
 }
 // Discovery is local and read-only. The caller chooses which paths to register.

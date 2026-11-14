@@ -4,12 +4,18 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-if (process.argv.length===3 && process.argv[2]==='--enable-claude-hook') {
+if (process.argv.length===3 && process.argv[2]==='--setup-claude-desktop') {
+  const { installClaudeDesktopHelper } = await import('../desktop-sessions.js');
+  const dataDir = path.resolve(process.env.OPENGLASS_DATA_DIR || path.join(homedir(), '.openglassui'));
+  const helper = await installClaudeDesktopHelper(dataDir);
+  console.log(`In System Settings > Privacy & Security > Accessibility, add this executable: ${helper}`);
+  console.log(`You can request access with "${helper}" --authorize and check it with "${helper}" --check.`);
+} else if (process.argv.length===3 && process.argv[2]==='--enable-claude-hook') {
   const {enableClaudePermissionHook}=await import('../claude-hook-setup.js');
   const file=await enableClaudePermissionHook();
   console.log(`Claude permission forwarding configured in ${file}. Import the session in OpenGlassUI and keep the companion running.`);
 } else if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log('Usage: openglassui [--enable-claude-hook]\nStarts the local OpenGlassUI dashboard. --enable-claude-hook explicitly enables local Claude permission forwarding. Configuration is stored in ~/.openglassui.');
+  console.log('Usage: openglassui [--enable-claude-hook | --setup-claude-desktop]\nStarts the local OpenGlassUI dashboard. --enable-claude-hook explicitly enables local Claude permission forwarding. Configuration is stored in ~/.openglassui.');
 } else if (process.argv.length > 2) {
   console.error('Unknown option. Run openglassui --help for usage.');
   process.exitCode = 1;

@@ -1,4 +1,7 @@
 import { getSessionPage } from './session-pages.js';
+import { sendToDesktop, supportsDesktopSession } from './desktop-sessions.js';
+
+const desktopSends = new Set();
 import http from 'node:http';
 import { readFile, realpath, mkdir, writeFile, rename, access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
@@ -186,7 +189,7 @@ const handler = async (req, res) => {
         let timer; const finish=()=>{clearTimeout(timer);watchers.delete(finish);if(!res.writableEnded && !res.destroyed)json(res,200,{revision});};
         watchers.add(finish); timer=setTimeout(finish,25000); res.on('close',()=>{clearTimeout(timer);watchers.delete(finish);}); return;
       }
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(task=>{const data=exposed(task);if(url.searchParams.get('view')==='wearable'&&data.id!==url.searchParams.get('task')){for(const key of ['messages','snapshotMessages'])if(Array.isArray(data[key]))data[key]=data[key].slice(-10).map(message=>({...message,text:typeof message.text==='string'?message.text.slice(-600):message.text}));if(typeof data.output==='string')data.output=data.output.slice(-4000);if(typeof data.prompt==='string'&&data.prompt!=='Importierte Sitzung')data.prompt=data.prompt.slice(0,200);delete data.events;}else if(!isLocal&&data.prompt==='Importierte Sitzung'&&Array.isArray(data.snapshotMessages)){data.snapshotMessages=data.snapshotMessages.slice(-10);data.output='';}return data;}).reverse()});
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(res,200,{revision,workspace,projects:[...projects.values()].map(({id,name})=>({id,name})),agents:agents.filter(a=>!setupSelectionSaved || setupState.agents.includes(a.id)).map(({id,name})=>({id,name})),tasks:[...tasks.values()].map(task=>{const data=exposed(task);if(supportsDesktopSession(task))data.desktopSend=task.agentId;if(url.searchParams.get('view')==='wearable'&&data.id!==url.searchParams.get('task')){for(const key of ['messages','snapshotMessages'])if(Array.isArray(data[key]))data[key]=data[key].slice(-10).map(message=>({...message,text:typeof message.text==='string'?message.text.slice(-600):message.text}));if(typeof data.output==='string')data.output=data.output.slice(-4000);if(typeof data.prompt==='string'&&data.prompt!=='Importierte Sitzung')data.prompt=data.prompt.slice(0,200);delete data.events;}else if(!isLocal&&data.prompt==='Importierte Sitzung'&&Array.isArray(data.snapshotMessages)){data.snapshotMessages=data.snapshotMessages.slice(-10);data.output='';}return data;}).reverse()});
       if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || (isLocal && !localOrigin(req))) return json(res,403,{error:'Zugriff verweigert.'});
       if(url.pathname==='/api/hooks/claude/activity'){
        if(!isLocal)return json(res,403,{error:'Local hook only.'});const input=await body(req);if(!/^[a-f0-9-]{36}$/i.test(input.sessionId||'')||!['UserPromptSubmit','PreToolUse','Stop','SessionEnd'].includes(input.event))return json(res,400,{error:'Invalid activity event.'});for(const task of tasks.values())if(task.agentId==='claude'&&task.sessionId===input.sessionId&&task.prompt==='Importierte Sitzung'&&!task.process)task.externalActivity={status:input.event==='SessionEnd'?'unknown':input.event==='Stop'?'idle':'working',at:new Date().toISOString()};changed();return json(res,200,{ok:true});
@@ -278,6 +281,35 @@ const handler = async (req, res) => {
         if (input.type==='deny') {resolve({type:'deny'});return json(res,200,{ok:true});}
         return json(res,400,{error:'Ungültige Antwort.'});
       }
+      const desktopMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/desktop-message$/);
+      if(desktopMatch){
+        const input=await body(req);
+        const task=tasks.get(desktopMatch[1]);
+        if(!task)return json(res,404,{error:'Task not found.'});
+        if(!publicTaskInput(input)||!['send','steer'].includes(input.mode)||(input.mode==='steer'&&task.agentId!=='codex')){
+          return json(res,400,{error:'Invalid Desktop message.'});
+        }
+        if(task.pendingDecision)return json(res,409,{error:'Resolve the pending decision before sending a Desktop message.'});
+        const key=task.agentId+':'+task.sessionId;
+        if(desktopSends.has(key))return json(res,409,{error:'Another message is being sent to this Desktop chat.'});
+        desktopSends.add(key);
+        try{
+          const device=requestDevice(req);
+          await sendToDesktop({
+            task, prompt:input.prompt.trim(), mode:input.mode, workspace:projectById(task.projectId||'default').path, dataDir,
+            authorize(){
+              assertCurrentAccess(req);
+              if(task.process||task.pendingDecision||shuttingDown)throw Object.assign(new Error('This chat is currently unavailable for Desktop sending.'),{status:409});
+            }
+          });
+          if(device){
+            task.pairedRequests=(task.pairedRequests||0)+1;
+            task.pairedSentWords=(task.pairedSentWords||0)+countSentWords(input.prompt);
+            save();
+          }
+          return json(res,200,{ok:true});
+        }finally{desktopSends.delete(key);}
+      }
       const steerMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/steer$/);
       if(steerMatch){const input=await body(req);const task=tasks.get(steerMatch[1]);if(!task)return json(res,404,{error:'Task not found.'});if(!publicTaskInput(input))return json(res,400,{error:'Enter a message of up to 8000 characters.'});if(task.status!=='running'||!task.canSteer||typeof task.process?.steer!=='function'||task.pendingDecision)return json(res,409,{error:'This task cannot accept live input right now.'});try{await task.process.steer(input.prompt.trim());}catch{return json(res,409,{error:'The active turn ended or could not accept the message.'});}startConversationTurn(task,input.prompt.trim());task.lastMessageAt=new Date().toISOString();task.trackedMessages=(task.trackedMessages||0)+1;if(!isLocal){task.pairedRequests=(task.pairedRequests||0)+1;task.pairedSentWords=(task.pairedSentWords||0)+countSentWords(input.prompt);}save();return json(res,200,{ok:true});}
       const match=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/(stop|resume)$/);
@@ -285,6 +317,7 @@ const handler = async (req, res) => {
         const task=tasks.get(match[1]); if (!task) return json(res,404,{error:'Aufgabe nicht gefunden.'});
         if (match[2] === 'stop') { if (task.status !== 'running' || !task.process) return json(res,409,{error:'Aufgabe läuft nicht.'}); task.status='stopped'; cancelDecisions(task); task.process.kill('SIGTERM'); save(); return json(res,200,exposed(task)); }
         const input=await body(req), agent=agents.find(a=>a.id===task.agentId);
+        if (desktopSends.has(task.agentId+':'+task.sessionId)) return json(res,409,{error:'A message is being sent to this Desktop chat.'});
         if (task.process) return json(res,409,{error:'Der vorherige Agent wird noch beendet. Bitte gleich erneut versuchen.'});
         if (task.status === 'running' || !task.sessionId || !(agent?.resumeArgs || ['kiro','opencode'].includes(agent?.id) || isGenericAcp(agent)) || !publicTaskInput(input)) return json(res,400,{error:'Diese Sitzung kann nicht fortgesetzt werden.'});
         if(input.model!==undefined){const validId=typeof input.model==='string'&&input.model.length>0&&input.model.length<=200;const knownAcp=(['kiro','opencode'].includes(agent.id)||isGenericAcp(agent))&&task.models?.some(item=>item.id===input.model);if(!validId||(!['codex','claude'].includes(agent.id)&&!knownAcp))return json(res,400,{error:'Invalid or unsupported model.'});}return json(res,200,exposed(run(agent,input.prompt,task,undefined,input.model,!isLocal)));

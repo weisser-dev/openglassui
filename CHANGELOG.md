@@ -4,6 +4,8 @@ Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+- Send messages to an existing Codex Desktop chat on macOS via its local session owner, with a separate steer action for active turns. Add an experimental Claude Desktop sender using macOS Accessibility.
+
 - Reduce wearable overview payloads and load the selected chat in full when opened.
 - Allow live follow-up input to OpenGlassUI-owned Codex turns from paired devices. Other clients’ active turns are not attached.
 - Give new tasks compact local titles and limit long titles in wearable navigation.

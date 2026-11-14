@@ -8,7 +8,7 @@ const titleResolver=window.createSessionTitleResolver((url)=>api(url),()=>{if(st
 const historyLimits=new Map();
 const selectedModels=new Map(),modelCapabilities=new Map();let speakingKey='';let modelPicker={key:'',agent:'',items:[],loading:false,error:''};const refreshingSnapshots=new Set();
 let storedHidden=[];try{const value=JSON.parse(localStorage.getItem('openglass-hidden-chats')||'[]');if(Array.isArray(value))storedHidden=value.filter(item=>typeof item==='string');}catch{}const hiddenChats=new Set(storedHidden);const chatKey=task=>task.sessionId?`${task.agentId}:${task.sessionId}`:`task:${task.id}`;
-const drafts=new Map(),importedSnapshots=new Map(),pagedHistory=new Map(),audio=createWearableAudio(window.speechSynthesis,window.SpeechSynthesisUtterance);
+const separateContinuations=new Set(),desktopModes=new Map(),desktopSending=new Set(),drafts=new Map(),importedSnapshots=new Map(),pagedHistory=new Map(),audio=createWearableAudio(window.speechSynthesis,window.SpeechSynthesisUtterance);
 const fontSizes={small:0.9,medium:1,large:1.2,extra:1.4};
 let fontSize=localStorage.getItem('openglass-font-size')||'medium';if(!(fontSize in fontSizes))fontSize='medium';document.documentElement.style.setProperty('--glass-text-scale',fontSizes[fontSize]);
 let speechLanguage=localStorage.getItem('openglass-speech-language')||'';
@@ -30,18 +30,49 @@ function finishTour(){localStorage.setItem('openglass-tour-completed-v1','true')
 function startFirstRun(){if(!window.OPENGLASS_DEMO&&localStorage.getItem('openglass-tour-completed-v1')!=='true'){route={page:'tour-welcome'};render(true);}focusScreen();}
 function setError(message){for(const item of document.querySelectorAll('#action-error, .composer-error')){item.hidden=!message;item.textContent=message||'';}}
 async function openModelPicker(key,agent){modelPicker={key,agent,items:[],loading:true,error:''};go('model-picker');try{const data=await api(`/api/models?agent=${encodeURIComponent(agent)}${key.startsWith('reply:')?'&task='+encodeURIComponent(key.slice(6)):''}`);modelPicker.items=data.models||[];if(!data.supported)modelPicker.error=t('Model selection is not supported for this agent yet.');}catch(error){modelPicker.error=error.message;}modelPicker.loading=false;if(route.page==='model-picker'){render(true);focusScreen();}}
-async function post(url,data){try{setError('');return await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}catch(error){setError(error.message);return null;}}
-function composer(key,sendLabel,onSend,modelName){
+async function post(url,data){try{setError('');return await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}catch(error){setError(t(error.message));return null;}}
+function composer(key,sendLabel,onSend,modelName,{desktopSend}={}){
  const wrap=el('div',undefined,'composer-wrap'),bar=el('div',undefined,'composer-bar'),input=el('textarea'),send=el('button',sendLabel,'composer-send'),error=el('p',undefined,'composer-error');
+ const isSteering=()=>desktopSend==='codex'&&desktopModes.get(key)==='steer';
+ const confirmLabel=()=>isSteering()?t('Steer'):sendLabel;
+ send.textContent=confirmLabel();
  input.rows=1;input.maxLength=8000;input.value=drafts.get(key)||'';input.placeholder=t('Dictate or write…');input.setAttribute('aria-label',t('Open dictation or handwriting'));input.dataset.focusKey='compose-'+key;
  send.type='button';send.dataset.focusKey='send-'+key;error.hidden=true;error.setAttribute('role','alert');
  const draft=attachWearableComposer(input,send,drafts,key,window);
- send.onclick=async()=>{draft.sync();if(!input.value.trim()){setError(t('Enter a message first.'));return;}const value=input.value,thread=document.querySelector('#screen .chat-thread');let pending;if(thread&&key.startsWith('reply:')){pending=el('div',undefined,'bubble outgoing pending-message');pending.setAttribute('role','status');pending.append(el('small',t('Sending…'),'bubble-label'),el('div',value));thread.append(pending);pending.scrollIntoView?.({block:'nearest'});}draft.setSending(true);send.textContent=t('Sending…');try{await onSend(value,()=>draft.clear());}finally{pending?.remove();send.textContent=sendLabel;draft.setSending(false);}};
- const model=el('button',modelName||t('Default'),'composer-model');model.type='button';model.dataset.focusKey='model:'+key;model.setAttribute('aria-label',t('Choose model'));model.onclick=()=>openModelPicker(key,selectedAgent);model.disabled=true;model.hidden=true;model.title=t('Checking available models…');
- const agentId=selectedAgent,taskId=key.startsWith('reply:')?key.slice(6):'',taskModels=taskId?state?.tasks.find(item=>item.id===taskId)?.models:null,cacheKey=agentId+':'+key+':'+JSON.stringify(taskModels||[]);if(!modelCapabilities.has(cacheKey)){const query=`/api/models?agent=${encodeURIComponent(agentId)}${key.startsWith('reply:')?'&task='+encodeURIComponent(key.slice(6)):''}`;const entry={value:null,promise:null};entry.promise=api(query).then(data=>entry.value=Boolean(data.supported&&data.models?.length)).catch(()=>{modelCapabilities.delete(cacheKey);return false;});modelCapabilities.set(cacheKey,entry);}
- const capability=modelCapabilities.get(cacheKey);if(capability.value===true){model.disabled=false;model.hidden=false;}capability.promise.then(supported=>{if(!model.isConnected)return;model.hidden=!supported;model.disabled=!supported;model.title=supported?t('Choose model'):t('Provider default; model selection unavailable');});bar.append(model,input,send);
+ if(desktopSend&&desktopSending.has(key))draft.setSending(true);
+ send.onclick=async()=>{
+  if(desktopSending.has(key))return;
+  draft.sync();
+  if(!input.value.trim()){setError(t('Enter a message first.'));return;}
+  const value=input.value,thread=document.querySelector('#screen .chat-thread');
+  let pending;
+  if(thread&&key.startsWith('reply:')){
+   pending=el('div',undefined,'bubble outgoing pending-message');
+   pending.setAttribute('role','status');
+   pending.append(el('small',t('Sending…'),'bubble-label'),el('div',value));
+   thread.append(pending);
+   pending.scrollIntoView?.({block:'nearest'});
+  }
+  if(desktopSend)desktopSending.add(key);
+  draft.setSending(true);
+  send.textContent=t('Sending…');
+  try{await onSend(value,()=>draft.clear(),isSteering()?'steer':'send');}
+  finally{
+   desktopSending.delete(key);
+   pending?.remove();
+   send.textContent=confirmLabel();
+   bar.querySelector?.('.composer-steer')?.setAttribute('aria-pressed',String(isSteering()));
+   draft.setSending(false);
+  }
+ };
+ const taskId=key.startsWith('reply:')?key.slice(6):'';
+ if(!desktopSend){
+  const model=el('button',modelName||t('Default'),'composer-model');model.type='button';model.dataset.focusKey='model:'+key;model.setAttribute('aria-label',t('Choose model'));model.onclick=()=>openModelPicker(key,selectedAgent);model.disabled=true;model.hidden=true;model.title=t('Checking available models…');
+  const agentId=selectedAgent,taskModels=taskId?state?.tasks.find(item=>item.id===taskId)?.models:null,cacheKey=agentId+':'+key+':'+JSON.stringify(taskModels||[]);if(!modelCapabilities.has(cacheKey)){const query=`/api/models?agent=${encodeURIComponent(agentId)}${key.startsWith('reply:')?'&task='+encodeURIComponent(key.slice(6)):''}`;const entry={value:null,promise:null};entry.promise=api(query).then(data=>entry.value=Boolean(data.supported&&data.models?.length)).catch(()=>{modelCapabilities.delete(cacheKey);return false;});modelCapabilities.set(cacheKey,entry);}
+  const capability=modelCapabilities.get(cacheKey);if(capability.value===true){model.disabled=false;model.hidden=false;}capability.promise.then(supported=>{if(!model.isConnected)return;model.hidden=!supported;model.disabled=!supported;model.title=supported?t('Choose model'):t('Provider default; model selection unavailable');});bar.append(model);
+ }
  if(key.startsWith('reply:')){
-  const area=el('div',undefined,'reply-suggestions'),status=el('p','','hint'),generate=el('button',undefined,'suggestion-generate');generate.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2 19.2 12.2 9l2.8 2.8L4.8 22 2 19.2Zm11-11 1.6-1.6 2.8 2.8-1.6 1.6L13 8.2ZM18.5 1l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8L18.5 1ZM10 2l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6L10 2Zm10.5 11 .6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7Z"/></svg>';generate.type='button';generate.dataset.focusKey='suggest:'+key;generate.setAttribute('aria-label',t('Suggest replies'));generate.title=t('Suggest replies');bar.insertBefore(generate,input);
+  const area=el('div',undefined,'reply-suggestions'),status=el('p','','hint'),generate=el('button',undefined,'suggestion-generate');generate.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2 19.2 12.2 9l2.8 2.8L4.8 22 2 19.2Zm11-11 1.6-1.6 2.8 2.8-1.6 1.6L13 8.2ZM18.5 1l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8L18.5 1ZM10 2l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6L10 2Zm10.5 11 .6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7Z"/></svg>';generate.type='button';generate.dataset.focusKey='suggest:'+key;generate.setAttribute('aria-label',t('Suggest replies'));generate.title=t('Suggest replies');bar.append(generate);
   const pick=el('button',undefined,'suggestion-choice bubble outgoing');pick.type='button';pick.hidden=true;pick.dataset.focusKey='suggestion:'+key;const label=el('small',undefined,'suggestion-label'),text=el('span',undefined,'suggestion-text'),guide=el('small',t('Swipe left or right; select to use.'),'suggestion-guide');pick.append(label,text,guide);let items=[],index=0,generating=false;
   const show=()=>{label.textContent=`${t('Suggested reply')} ${index+1}/${items.length}`;text.textContent=items[index];pick.setAttribute('aria-label',`${label.textContent}. ${items[index]}. ${t('Swipe left or right; select to use.')}`);};
   pick.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key)||!items.length)return;event.preventDefault();event.stopPropagation();index=(index+(event.key==='ArrowRight'?1:-1)+items.length)%items.length;show();},true);
@@ -49,10 +80,23 @@ function composer(key,sendLabel,onSend,modelName){
   generate.onclick=async()=>{if(generating)return;generating=true;generate.setAttribute('aria-disabled','true');const phrases=['AI is cooking…','Mixing a few ideas…','Almost ready to serve…'];let phrase=0;status.classList.add('is-cooking');status.textContent=t(phrases[0]);const cooking=setInterval(()=>{if(status.isConnected)status.textContent=t(phrases[++phrase%phrases.length]);},3500);try{const data=await api(`/api/tasks/${encodeURIComponent(taskId)}/suggestions`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});items=data.suggestions||[];index=0;if(!items.length)throw new Error(t('No suggestions available.'));if(!pick.isConnected)return;show();pick.hidden=false;status.textContent='';pick.focus();pick.scrollIntoView({block:'nearest'});}catch(error){status.textContent=t(error.message);}finally{clearInterval(cooking);status.classList.remove('is-cooking');generating=false;generate.removeAttribute('aria-disabled');}};
   area.append(pick,status);wrap.append(area);
  }
+ bar.append(input,send);
+ if(desktopSend==='codex'){
+  const steer=el('button',t('Steer active turn'),'composer-steer');
+  steer.type='button';steer.dataset.focusKey='steer-'+key;
+  steer.setAttribute('aria-pressed',String(isSteering()));
+  steer.onclick=()=>{
+   desktopModes.set(key,isSteering()?'send':'steer');
+   steer.setAttribute('aria-pressed',String(isSteering()));
+   send.textContent=confirmLabel();
+  };
+  bar.prepend(steer);
+ }
  wrap.append(error,bar);return wrap;
 }
 async function refreshImportedHistory(taskId){
- const task=state?.tasks.find(item=>item.id===taskId);if(!task||task.prompt!=='Importierte Sitzung'||Array.isArray(task.messages)||!task.sessionId||refreshingSnapshots.has(taskId))return;
+ const task=state?.tasks.find(item=>item.id===taskId);if(!task||task.prompt!=='Importierte Sitzung'||!task.sessionId||refreshingSnapshots.has(taskId))return;
+ if(Array.isArray(task.messages)&&(!task.desktopSend||separateContinuations.has(task.id)))return;
  if(['claude','codex'].includes(task.agentId)){await refreshPagedHistory(taskId);return;}
  refreshingSnapshots.add(taskId);const initialFocus=document.activeElement,lastMessage=[...document.querySelectorAll('#screen [data-chat-message]')].at(-1),wasAtLatest=initialFocus===lastMessage;
  try{const result=await api(`/api/sessions/${encodeURIComponent(task.agentId)}/${encodeURIComponent(task.sessionId)}?projectId=${encodeURIComponent(task.projectId||'default')}`);if(typeof result.text!=='string')throw new Error('Invalid session history');const messages=window.formatProviderSession(result.session),previous=importedSnapshots.get(taskId);if(previous?.text===result.text)return;importedSnapshots.set(taskId,{text:result.text,messages,at:Date.now()});if(route.page!=='chat'||selectedTask!==taskId)return;
@@ -82,7 +126,7 @@ function renderWearableMarkdown(container,text){
  }
 }
 function buildChat(task,agent){
-const chat=el('div',undefined,'chat-thread');const snapshot=importedSnapshots.get(task.id),monitored=Array.isArray(task.snapshotMessages)&&Date.parse(task.snapshotSync?.checkedAt||'')>=(snapshot?.at||0)?task.snapshotMessages:null;const page=pagedHistory.get(task.id);const imported=page?.messages||monitored||(snapshot?.messages?.length?snapshot.messages:null);const transcript=snapshot?.text??task.output;const messages=Array.isArray(task.messages)?task.messages:imported?.length?imported:[...(task.prompt!=='Importierte Sitzung'?[{role:'user',text:task.prompt}]:[]),...(transcript?[{role:'transcript',text:transcript}]:[])];
+const chat=el('div',undefined,'chat-thread');const snapshot=importedSnapshots.get(task.id),monitored=Array.isArray(task.snapshotMessages)&&Date.parse(task.snapshotSync?.checkedAt||'')>=(snapshot?.at||0)?task.snapshotMessages:null;const page=pagedHistory.get(task.id);const imported=page?.messages||monitored||(snapshot?.messages?.length?snapshot.messages:null);const transcript=snapshot?.text??task.output;const messages=task.desktopSend&&!separateContinuations.has(task.id)&&page?page.messages:Array.isArray(task.messages)?task.messages:imported?.length?imported:[...(task.prompt!=='Importierte Sitzung'?[{role:'user',text:task.prompt}]:[]),...(transcript?[{role:'transcript',text:transcript}]:[])];
    const limit=page?messages.length:(historyLimits.get(task.id)||10),start=Math.max(0,messages.length-limit);
    if(page?.nextBefore!=null){const earlier=button(t('Load earlier messages'),()=>void refreshPagedHistory(task.id,true),`${page.nextBefore} ${t('earlier messages')}`);earlier.classList.add('load-earlier');chat.append(earlier);}
    if(start>0){const earlier=button(t('Load earlier messages'),()=>{historyLimits.set(task.id,limit+10);const oldTop=window.scrollY,oldHeight=document.documentElement.scrollHeight;render(true);window.scrollTo(0,oldTop+document.documentElement.scrollHeight-oldHeight);},`${start} ${t('earlier messages')}`);earlier.classList.add('load-earlier');chat.append(earlier);}
@@ -103,10 +147,11 @@ const chat=el('div',undefined,'chat-thread');const snapshot=importedSnapshots.ge
    if(!messages.length&&task.status!=='running')chat.append(el('div',t('No response yet.'),'bubble incoming'));return chat;
 }
 function updateChatWhileEditing(){const task=state?.tasks.find(item=>item.id===selectedTask),chat=document.querySelector('#screen .chat-thread');if(!task||!chat)return;const current=document.querySelector('#screen .decision');if(!document.activeElement?.closest('.decision')){if(current&&current.dataset.decisionId!==task.pendingDecision?.id)current.remove();if(task.pendingDecision&&(!current||current.dataset.decisionId!==task.pendingDecision.id)){const decision=window.decisionUI(task,async(url,data)=>{const result=await post(url,data);if(result)await refresh(true);},t);chat.before(decision);}}chat.replaceWith(buildChat(task,state.agents.find(a=>a.id===selectedAgent)));}
-function render(force=false){if(!state)return;const screen=$('#screen');const active=document.activeElement;if(!force&&screen.contains(active)&&(active.matches('input, textarea, select, .suggestion-choice, .suggestion-generate')||active.closest('.decision'))){if(route.page==='chat')updateChatWhileEditing();return;}
+function render(force=false){if(!state)return;const screen=$('#screen');const active=document.activeElement;if(!force&&screen.contains(active)&&(desktopSending.has('reply:'+selectedTask)||active.matches('input, textarea, select, .suggestion-choice, .suggestion-generate')||active.closest('.decision'))){if(route.page==='chat')updateChatWhileEditing();return;}
  const visibleTasks=window.uniqueSessionTasks(state.tasks);const recent=recentVisible?recentChats(visibleTasks.filter(task=>task.status!=='running'&&!task.pendingDecision&&!hiddenChats.has(chatKey(task))),state.agents,state.projects,{limit:recentLimit,hours:recentHours}):[];const signature=JSON.stringify([route,selectedAgent,selectedProject,selectedTask,sessionsState,sessions,state.tasks,state.agents,state.projects,recent.map(task=>task.id)]);if(!force&&signature===rendered)return;rendered=signature;
  const pageScroll=window.scrollY;const previousKey=screen.contains(active)?active.dataset.focusKey:null;const scroll=active.matches?.('.chat-output')?active.scrollTop:0;screen.replaceChildren();document.querySelector('.brand').hidden=route.page!=='agents';document.querySelector('#glass-version').hidden=route.page!=='agents';document.querySelector('#glass-build').hidden=route.page!=='agents';document.querySelector('footer').classList.toggle('is-home',route.page==='agents');document.querySelector('footer').hidden=route.page!=='agents';
  const agent=state.agents.find(a=>a.id===selectedAgent),project=state.projects.find(p=>p.id===selectedProject),task=state.tasks.find(t=>t.id===selectedTask);
+ const desktopDestination=task?.desktopSend&&!separateContinuations.has(task.id);
  if(route.page==='tour-welcome'){
   screen.append(heading(t('WELCOME'),t('Your glasses, your workflow.'),t('Learn the controls and tools in a short practice tour.')));
   const actions=el('div',undefined,'tour-actions'),start=button(t('Start the tour'),()=>go('tour-swipe'));start.dataset.focusKey='tour-start';actions.append(start,button(t('Skip tour'),finishTour));screen.append(actions);
@@ -148,9 +193,23 @@ function render(force=false){if(!state)return;const screen=$('#screen');const ac
   if(task){
    if(task.prompt==='Importierte Sitzung'&&!Array.isArray(task.messages)){const watch=task.snapshotSync?.status==='watching'?'Watching for text updates. External approvals are not available.':task.snapshotSync?.status==='unavailable'?'Could not check this session. The displayed history may be outdated.':'Imported history is a snapshot. Activity and approvals from another client are not live.';screen.append(el('p',t(watch),'hint imported-snapshot'));}
    if(task.pendingDecision)screen.append(window.decisionUI(task,async(url,data)=>{const result=await post(url,data);if(result)await refresh(true);},t));
-   if(task.sessionId&&task.status!=='running')screen.append(el('p',t('Right from a response: reply'),'chat-shortcut'));if(task.prompt==='Importierte Sitzung'&&task.sessionId)screen.append(el('p',t('Replies run as a separate agent continuation and may not appear in another open client.'),'hint'));screen.append(buildChat(task,agent));
+   if(task.sessionId&&task.status!=='running')screen.append(el('p',t('Right from a response: reply'),'chat-shortcut'));if(desktopDestination)screen.append(el('p',t('Messages go to this chat on the companion Mac.'),'hint'));else if(task.prompt==='Importierte Sitzung'&&task.sessionId)screen.append(el('p',t('Replies run as a separate agent continuation and may not appear in another open client.'),'hint'));screen.append(buildChat(task,agent));
    if(showDetails&&task.events?.length)screen.append(window.renderTaskEvents(task.events));if(showDetails&&task.usage)screen.append(el('pre',window.formatUsage(task.usage),'usage'));
-   if(task.status==='running'){if(task.canSteer&&!task.pendingDecision)screen.append(composer('reply:'+task.id,t('Send'),async(value,clear)=>{const result=await post(`/api/tasks/${task.id}/steer`,{prompt:value});if(result){clear();await refresh(true);}}));screen.append(button(t('Stop task'),async()=>{if(await post(`/api/tasks/${task.id}/stop`,{}))await refresh(true);}));}else if(task.sessionId&&project)screen.append(composer('reply:'+task.id,t('Send'),async(value,clear)=>{const result=await post(`/api/tasks/${task.id}/resume`,{prompt:value,...(selectedModels.get('reply:'+task.id)?{model:selectedModels.get('reply:'+task.id)}:{})});if(result){clear();await refresh(true);}},selectedModels.get('reply:'+task.id)||task.model));
+   if(task.status==='running'){if(task.canSteer&&!task.pendingDecision)screen.append(composer('reply:'+task.id,t('Send'),async(value,clear)=>{const result=await post(`/api/tasks/${task.id}/steer`,{prompt:value});if(result){clear();await refresh(true);}}));screen.append(button(t('Stop task'),async()=>{if(await post(`/api/tasks/${task.id}/stop`,{}))await refresh(true);}));}else if(desktopDestination&&!task.pendingDecision){
+    screen.append(composer('reply:'+task.id,t('Send'),async(value,clear,mode)=>{
+     const result=await post(`/api/tasks/${task.id}/desktop-message`,{prompt:value,mode});
+     if(result){clear();desktopModes.delete('reply:'+task.id);void refreshImportedHistory(task.id);}
+    },undefined,{desktopSend:task.desktopSend}));
+   }else if(!desktopDestination&&task.sessionId&&project)screen.append(composer('reply:'+task.id,t('Send'),async(value,clear)=>{const result=await post(`/api/tasks/${task.id}/resume`,{prompt:value,...(selectedModels.get('reply:'+task.id)?{model:selectedModels.get('reply:'+task.id)}:{})});if(result){clear();await refresh(true);}},selectedModels.get('reply:'+task.id)||task.model));
+   if(task.desktopSend&&!task.pendingDecision){
+    const destination=button(t(desktopDestination?'Continue in OpenGlassUI instead':'Send to the Desktop chat instead'),()=>{
+     if(desktopDestination)separateContinuations.add(task.id);else separateContinuations.delete(task.id);
+     render(true);
+     if(!desktopDestination)void refreshImportedHistory(task.id);
+    });
+    destination.dataset.focusKey='destination:'+task.id;
+    screen.append(destination);
+   }
   }
  }
  else if(route.page==='speech-language'){screen.append(heading(t('SETTINGS'),t('Voice language'),t('Choose the language for reading responses aloud. Available voices depend on the device.')));for(const [value,label] of [['',t('Device default')],['de-DE','Deutsch'],['en-US','English']]){const choice=button(`${speechLanguage===value?'✓  ':''}${label}`,()=>{speechLanguage=value;localStorage.setItem('openglass-speech-language',value);back();});choice.dataset.focusKey='speech-language:'+value;screen.append(choice);}}
