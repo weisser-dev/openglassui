@@ -234,6 +234,7 @@ const handler = async (req, res) => {
         if([...projects.values()].some(p=>p.path===resolved)) return json(res,409,{error:'Dieses Projekt ist bereits eingerichtet.'});
         const project={id:randomUUID(),name:input.name.trim(),path:resolved}; projects.set(project.id,project); await saveProjects(); changed(); return json(res,201,{id:project.id,name:project.name});
       }
+      if (url.pathname === '/api/pairing/cancel') {if(!isLocal)return json(res,403,{error:'Available locally only.'});await body(req);pairings.clear();return json(res,200,{ok:true});}
       if (url.pathname === '/api/pairing') {
         if (!isLocal) return json(res,403,{error:'Nur lokal verfügbar.'});
         const input=await body(req); let base; try { base=new URL(input.url); } catch { return json(res,400,{error:'Bitte eine öffentliche HTTPS-Adresse angeben.'}); }

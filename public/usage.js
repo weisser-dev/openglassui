@@ -48,3 +48,18 @@ window.parseWearableCommand=function(text){
  return {name,body};
 };
 window.isWearableInterruption=function(text){return /^\s*\[Request interrupted by user(?: for tool use)?\]\s*$/i.test(String(text||''));};
+
+// A decorative, local-only tree. The unmodified QR image is revealed on demand.
+window.createPairingTree=function(content,translate=value=>value){
+ const root=document.createElement('div');root.className='pairing-tree-widget';
+ const art=document.createElement('button');art.type='button';art.className='pairing-tree-art';art.setAttribute('aria-label',translate('Click for QR code'));const label=document.createElement('span');label.className='pairing-tree-caption';label.textContent=translate('Click for QR code');art.append(label);
+ const tree=document.createElement('div');tree.className='pairing-tree-shape';
+ for(const cls of ['pairing-tree-crown crown-back','pairing-tree-crown crown-mid','pairing-tree-crown crown-front','pairing-tree-trunk']){const part=document.createElement('span');part.className=cls;tree.append(part);}art.append(tree);
+ for(let i=0;i<9;i++){const leaf=document.createElement('i');leaf.className='pairing-tree-leaf';leaf.style.setProperty('--leaf-index',i);art.append(leaf);}
+ const reveal=document.createElement('div');reveal.className='pairing-tree-reveal';reveal.hidden=true;reveal.append(content);
+ const control=document.createElement('button');control.type='button';control.className='pairing-tree-control';control.setAttribute('aria-expanded','false');control.textContent=translate('Click for QR code');control.hidden=true;
+ control.addEventListener('click',()=>{const show=reveal.hidden;reveal.hidden=!show;art.hidden=show;control.hidden=!show;control.setAttribute('aria-expanded',String(show));control.textContent=translate(show?'Show tree':'Click for QR code');});
+ art.addEventListener('click',()=>control.click());
+ root.resetPairingTree=()=>{reveal.hidden=true;art.hidden=false;control.hidden=true;control.setAttribute('aria-expanded','false');control.textContent=translate('Click for QR code');};
+ root.append(art,reveal,control);return root;
+};

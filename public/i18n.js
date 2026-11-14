@@ -2,6 +2,8 @@
 // the interface is still being migrated and must not translate user content.
 (() => {
  const de={
+  'Remove pairing code':'Kopplungscode entfernen','Pairing code removed.':'Kopplungscode entfernt.','Could not remove the pairing code.':'Der Kopplungscode konnte nicht entfernt werden.',
+  'Click for QR code':'QR-Code anzeigen','Show tree':'Baum anzeigen',
   'Counts begin when each feature is enabled. Paired phones and glasses are counted together. Suggestions used are copied into a draft, not necessarily sent.':'Die Zählung beginnt mit der jeweiligen Funktion. Gekoppelte Handys und Brillen werden zusammengezählt. Übernommene Vorschläge werden in den Entwurf kopiert, aber nicht unbedingt gesendet.',
   'Suggestions generated':'Erstellte Vorschläge','Suggested words':'Vorgeschlagene Wörter','Suggestions used':'Übernommene Vorschläge','Dictated words and provider tokens are not available on this device.':'Diktierte Wörter und Anbieter-Tokens sind auf diesem Gerät nicht verfügbar.',
   'Theme':'Design','Enter a number between':'Gib eine Zahl in diesem Bereich ein:','Suggestions run separately through the Claude Code SDK, without project tools or a saved session. The selected provider receives the bounded context.':'Vorschläge laufen separat über das Claude Code SDK, ohne Projektwerkzeuge oder gespeicherte Sitzung. Der ausgewählte Anbieter erhält den begrenzten Kontext.',

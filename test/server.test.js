@@ -42,6 +42,10 @@ test('lokale Aufgaben starten und unberechtigte Anfragen ablehnen', async () => 
   const remoteHeaders={'X-Forwarded-For':'203.0.113.10'};
   assert.equal((await fetch(base+'/api/state',{headers:remoteHeaders})).status,401);
   assert.equal((await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com/prefix'})})).status,400);
+  const cancelledPair=await (await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com'})})).json();
+  const cancelledCode=new URLSearchParams(new URL(cancelledPair.url).hash.slice(1)).get('pair');
+  assert.equal((await fetch(base+'/api/pairing/cancel',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:'{}'})).status,200);
+  assert.equal((await fetch(gateway+'/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:cancelledCode})})).status,401);
   const pairResponse=await fetch(base+'/api/pairing',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({url:'https://example.com'})});
   assert.equal(pairResponse.status,200); const pair=await pairResponse.json(); assert.match(pair.deepLink,/^fb-viewapp:/);
   const code=new URLSearchParams(new URL(pair.url).hash.slice(1)).get('pair');

@@ -18,6 +18,7 @@
   if(path==='/api/tunnel')return json(tunnel);
   if(path==='/api/tunnel/start'){tunnel={status:'running',provider:body(options).provider,url:'https://demo.invalid'};return json(tunnel);}
   if(path==='/api/tunnel/stop'){tunnel={status:'stopped'};return json(tunnel);}
+  if(path==='/api/pairing/cancel')return json({ok:true});
   if(path==='/api/pairing'){const svg='<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect width="180" height="180" fill="white"/><text x="90" y="90" text-anchor="middle" fill="black">DEMO ONLY</text></svg>';return json({qr:'data:image/svg+xml,'+encodeURIComponent(svg),deepLink:'#',expiresIn:300});}
   if(path==='/api/revoke'){devices.splice(0);return json({ok:true});}
   const device=path.match(/^\/api\/devices\/([^/]+)\/(rename|revoke)$/);if(device){const index=devices.findIndex(item=>item.id===device[1]);if(index<0)return json({error:'Device not found'},404);if(device[2]==='revoke')devices.splice(index,1);else devices[index].name=String(body(options).name||'Demo device');return json({ok:true});}

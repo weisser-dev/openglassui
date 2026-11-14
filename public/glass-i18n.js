@@ -1,5 +1,6 @@
 // UI labels only; agent and user content is never translated.
 const glassGerman={
+"Replies run as a separate agent continuation and may not appear in another open client.":"Antworten starten eine separate Agentenfortsetzung und erscheinen möglicherweise nicht im anderen geöffneten Client.",
 "Tool image":"Werkzeugbild",
 "Image attachment":"Bildanhang",
 "Load earlier messages":"Ältere Nachrichten laden","earlier messages":"ältere Nachrichten","Learn the controls and tools in a short practice tour.":"Lerne jetzt die Steuerung und die Funktionen in einer kurzen Übung kennen.","STEP 1 / 4":"SCHRITT 1 / 4","STEP 2 / 4":"SCHRITT 2 / 4","STEP 3 / 4":"SCHRITT 3 / 4","STEP 4 / 4":"SCHRITT 4 / 4","Next":"Weiter","Illustration only. Use the band gesture, then select Next.":"Schematische Darstellung. Führe die Geste aus und wähle dann Weiter.","Example reply: Everything looks good. What would you like to try next?":"Beispielantwort: Alles sieht gut aus. Was möchtest du als Nächstes ausprobieren?",
