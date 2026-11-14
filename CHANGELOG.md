@@ -2,7 +2,9 @@
 
 Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.3] - 2026-11-14
+
+- Add macOS DMG and Windows EXE builds with a menu bar or tray app, optional start at login, and an update check through GitHub Releases.
 
 - Send messages to an existing Codex Desktop chat on macOS via its local session owner, with a separate steer action for active turns. Add an experimental Claude Desktop sender using macOS Accessibility.
 

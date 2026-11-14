@@ -12,6 +12,8 @@ OpenGlassUI connects wearables and desktop clients to locally configured coding-
 
 > **Status: early prototype.** Local Codex task creation, continuation, and an interactive multiple-choice question have been exercised with a real Codex installation. Claude Code's real end-to-end flow, the Meta AI installation link and basic wristband navigation have been exercised by a wearer. WebMCP, background push, and complete end-to-end flows remain unverified on physical glasses. Do not treat the current remote-access design as production-ready.
 
+Download a [desktop installer](https://github.com/weisser-dev/openglassui/releases/latest) for macOS or Windows. See the [desktop installation and update guide](docs/DESKTOP.md).
+
 ## What works today
 
 | Capability | Current implementation | Limits |
@@ -97,7 +99,7 @@ Start the companion:
 npm start
 ```
 
-Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The dashboard also contains a step-by-step glasses installation guide. Use **Bestehende Sitzungen** to browse Codex, Claude or Kiro sessions returned for the selected workspace. Large session lists can take time to load. Add more projects locally via **Projekt hinzufügen**; registered projects can then be selected on the glasses. Only continue sessions that are no longer active elsewhere; attaching safely to an externally running session is not supported. Open **Brillen-Simulator** for a keyboard-driven preview using live data.
+Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The dashboard also contains a step-by-step glasses installation guide. Use **Bestehende Sitzungen** to browse Codex, Claude or Kiro sessions returned for the selected workspace. Large session lists can take time to load. Add more projects locally via **Projekt hinzufügen**; registered projects can then be selected on the glasses. See [shared sessions and live input](#shared-sessions-and-live-input) for connecting an open desktop chat. Open **Brillen-Simulator** for a keyboard-driven preview using live data.
 
 The setup has six main steps. You can select multiple agents, review and import selected discovered projects for each agent, start an installed tunnel or enter an HTTPS address, optionally install cloudflared with Homebrew on macOS or opt in to starting the selected tunnel on companion startup, generate a pairing QR code, choose automatic login and tunnel startup, and check for a paired device. The wizard saves non-secret selections locally in `.openglass/setup.json`; provider authentication is handled separately. If Tailscale requires Serve activation, the setup provides its authorization link and resumes once approved; HTTPS may also need to be enabled. A detected pairing does not establish that the glasses display or wristband works. The setup supports English and partial German translations; the rest of the interface has not yet been fully migrated to internationalization.
 

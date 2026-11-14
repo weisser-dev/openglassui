@@ -1,3 +1,4 @@
+import { resolveCodexExecutable } from './codex-executable.js';
 import { getSessionPage } from './session-pages.js';
 import { sendToDesktop, supportsDesktopSession } from './desktop-sessions.js';
 
@@ -35,7 +36,9 @@ const agents = config.agents || [];
 const dataDir = path.resolve(process.env.OPENGLASS_DATA_DIR || path.join(root, '.openglass'));
 await mkdir(dataDir, { recursive:true, mode:0o700 });
 const suggestionSettings=createSuggestionSettings(dataDir);
-const autostart = createAutostart({ server: path.join(root, 'server.js'), config: configPath, dataDir });
+const autostart = process.parentPort
+  ? { status: async () => ({ supported: false, enabled: false, desktop: true }) }
+  : createAutostart({ server: path.join(root, 'server.js'), config: configPath, dataDir });
 const customAgentsPath=path.join(dataDir,'acp-agents.json');let customAgents=[];try{customAgents=JSON.parse(await readFile(customAgentsPath,'utf8'));if(!Array.isArray(customAgents))throw new Error('Invalid ACP agent list.');}catch(error){if(error.code!=='ENOENT')throw error;}
 for(const entry of customAgents)if(entry?.type==='acp'&&!agents.some(agent=>agent.id===entry.id))agents.push(entry);
 const isGenericAcp=agent=>agent?.type==='acp'&&!['kiro','opencode','codex','claude'].includes(agent.id);
@@ -182,7 +185,7 @@ const handler = async (req, res) => {
       if (req.method === 'GET' && url.pathname === '/api/autostart') { if(!isLocal)return json(res,403,{error:'Available locally only.'}); return json(res,200,await autostart.status()); }
       if (req.method === 'GET' && url.pathname === '/api/tunnel/install-status') {if(!isLocal)return json(res,403,{error:'Available locally only.'});return json(res,200,{...tunnelInstaller.status(),platform:process.platform,brewAvailable:await executableAvailable('brew'),installed:await executableAvailable('cloudflared')});}
       if (req.method === 'GET' && url.pathname === '/api/tunnel') { if(!isLocal)return json(res,403,{error:'Nur lokal verfügbar.'}); return json(res,200,tunnel.status()); }
-      if (req.method === 'GET' && url.pathname === '/api/setup') {if(!isLocal)return json(res,403,{error:'Available locally only.'});const available=await Promise.all(agents.map(async agent=>({id:agent.id,name:agent.name,type:agent.type||'agent',installed:await executableAvailable(agent.command)})));return json(res,200,{setup:setupState,agents:available,projects:[...projects.values()].map(({id,name,path})=>({id,name,path})),tunnel:tunnel.status()});}
+      if (req.method === 'GET' && url.pathname === '/api/setup') {if(!isLocal)return json(res,403,{error:'Available locally only.'});const available=await Promise.all(agents.map(async agent=>({id:agent.id,name:agent.name,type:agent.type||'agent',installed:await executableAvailable(agent.id==='codex'?resolveCodexExecutable(agent.command):agent.command)})));return json(res,200,{setup:setupState,agents:available,projects:[...projects.values()].map(({id,name,path})=>({id,name,path})),tunnel:tunnel.status()});}
       if (req.method === 'GET' && url.pathname === '/api/changes') {
         const since=Number(url.searchParams.get('since')); if(!Number.isSafeInteger(since) || since<0) return json(res,400,{error:'Ungültige Revision.'});
         if(since!==revision) return json(res,200,{revision});
@@ -204,7 +207,7 @@ const handler = async (req, res) => {
         const promise=queueDecision(task,decision,controller.signal);notifyPush('decision');const answer=await promise;clearTimeout(timer);if(!res.destroyed)json(res,200,controller.signal.aborted?{type:'unavailable'}:answer);return;
       }
       if(url.pathname==='/api/suggestion-settings'){if(!isLocal)return json(res,403,{error:'Available locally only.'});try{return json(res,200,await suggestionSettings.write(await body(req)));}catch{return json(res,400,{error:'Invalid suggestion settings.'});}}
-      if(url.pathname==='/api/autostart'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req);if(typeof input.enabled!=='boolean')return json(res,400,{error:'Invalid login start setting.'});return json(res,200,await autostart.set(input.enabled));}
+      if(url.pathname==='/api/autostart'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req);if(typeof input.enabled!=='boolean')return json(res,400,{error:'Invalid login start setting.'});if(!autostart.set)return json(res,409,{error:'Manage login start in the OpenGlassUI tray menu.'});return json(res,200,await autostart.set(input.enabled));}
       if(url.pathname==='/api/setup'){if(!isLocal)return json(res,403,{error:'Available locally only.'});const input=await body(req),selected=input.agents ?? [input.agent];if(!Array.isArray(selected)||!selected.length||new Set(selected).size!==selected.length||selected.some(id=>!agents.some(a=>a.id===id))||!selected.includes(input.agent)||!projects.has(input.projectId)||!['cloudflare','ngrok','tailscale-funnel','external'].includes(input.provider)||typeof input.complete!=='boolean'||(input.autoStartTunnel!==undefined&&typeof input.autoStartTunnel!=='boolean'))return json(res,400,{error:'Invalid setup selection.'});let publicUrl=setupState.publicUrl||'';if(input.publicUrl!==undefined){try{if(input.publicUrl){const u=new URL(input.publicUrl);if(u.protocol!=='https:'||u.pathname!=='/'||u.search||u.hash||u.username||u.password)throw new Error();publicUrl=u.origin;}else publicUrl='';}catch{return json(res,400,{error:'Enter a valid HTTPS origin.'});}}setupState={agent:input.agent,agents:selected,projectId:input.projectId,provider:input.provider,publicUrl,complete:input.complete,autoStartTunnel:input.autoStartTunnel??setupState.autoStartTunnel??false};await saveSetup();setupSelectionSaved=true;changed();return json(res,200,{setup:setupState});}
       if(url.pathname==='/api/push/subscription' || url.pathname==='/api/push/unsubscribe'){
         const device=requestDevice(req);if(!device)return json(res,403,{error:'Nur gekoppelte Geräte können Push konfigurieren.'});
@@ -346,8 +349,33 @@ for(const listener of [server,gateway])listener.on('upgrade',(req,socket,head)=>
   });
 });
 const heartbeat=setInterval(()=>{for(const ws of sockets)if(ws.readyState===WebSocket.OPEN)ws.ping();},30000);heartbeat.unref();
-server.listen(port,host,()=>console.log(`OpenGlassUI läuft lokal: http://${host}:${port}\nProjekt: ${workspace}`));
-gateway.listen(gatewayPort,host,()=>{sessionMonitor.start();console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`);if(setupState.complete&&setupState.autoStartTunnel===true&&setupState.provider!=='external'){try{tunnel.start(setupState.provider);}catch(error){console.error('Automatic tunnel start failed:',error.message);}}});
+let listenersReady = 0;
+function desktopReady() {
+  if (++listenersReady === 2) process.parentPort?.postMessage({ type: 'ready' });
+}
+for (const listener of [server, gateway]) listener.on('error', error => {
+  if (!process.parentPort) throw error;
+  const message = error.code === 'EADDRINUSE'
+    ? `Port ${error.port} is in use. Stop the other companion before opening the desktop app.`
+    : error.message;
+  process.parentPort.postMessage({ type: 'error', message });
+});
+server.listen(port,host,()=>{
+  console.log(`OpenGlassUI läuft lokal: http://${host}:${port}\nProjekt: ${workspace}`);
+  desktopReady();
+});
+gateway.listen(gatewayPort,host,()=>{
+  sessionMonitor.start();
+  console.log(`Tunnel-Gateway: http://${host}:${gatewayPort}`);
+  if(setupState.complete&&setupState.autoStartTunnel===true&&setupState.provider!=='external'){
+    try{tunnel.start(setupState.provider);}catch(error){console.error('Automatic tunnel start failed:',error.message);}
+  }
+  desktopReady();
+});
 
 let shuttingDown=false;
-for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{if(shuttingDown)return;shuttingDown=true;sessionMonitor.stop();tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue,setupQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();});
+function shutdown(){if(shuttingDown)return;shuttingDown=true;sessionMonitor.stop();tunnel.stop();for(const task of tasks.values()){if(task.status==='running' && task.process){task.status='stopped';cancelDecisions(task);if(task.process.forceKill)task.process.forceKill();else task.process.kill();}}save();for(const ws of sockets)ws.close();gateway.close();server.close(()=>{void Promise.allSettled([saveQueue,devicesQueue,projectsQueue,setupQueue]).then(()=>process.exit(0));});setTimeout(()=>process.exit(1),1500).unref();}
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,shutdown);
+process.parentPort?.on('message', event => {
+  if (event.data?.type === 'shutdown') shutdown();
+});

@@ -1,0 +1,126 @@
+name: Desktop installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish installers to GitHub Releases for this package version
+        type: boolean
+        default: false
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mac-arm64
+            platform: mac
+            os: macos-15
+            args: --mac dmg zip --arm64
+          - name: mac-x64
+            platform: mac
+            os: macos-15-intel
+            args: --mac dmg zip --x64
+          - name: windows
+            platform: windows
+            os: windows-2025
+            args: --win nsis --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        if: runner.os == 'macOS'
+      - name: Build installers
+        run: npm run desktop:build -- ${{ matrix.args }}
+        env:
+          OPENGLASS_SIGNED_BUILD: ${{ matrix.platform == 'mac' && vars.DESKTOP_SIGN_MAC || matrix.platform == 'windows' && vars.DESKTOP_SIGN_WINDOWS || '0' }}
+          CSC_LINK: ${{ matrix.platform == 'mac' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'mac' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_TEAM_ID || '' }}
+          WIN_CSC_LINK: ${{ matrix.platform == 'windows' && secrets.WIN_CSC_LINK || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ matrix.platform == 'windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+      - run: node scripts/smoke-desktop.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            dist/*.dmg
+            dist/*.exe
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest*.yml
+
+  publish:
+    if: github.ref_type == 'tag' || (github.ref == 'refs/heads/main' && inputs.publish)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: downloads
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Combine update metadata
+        run: |
+          mkdir artifacts
+          cp downloads/desktop-mac-*/*.dmg downloads/desktop-mac-*/*.zip artifacts/
+          cp downloads/desktop-*/*.blockmap artifacts/
+          cp downloads/desktop-windows/*.exe downloads/desktop-windows/latest.yml artifacts/
+          node scripts/merge-mac-update-info.js downloads/desktop-mac-arm64 downloads/desktop-mac-x64 artifacts
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGN_MAC: ${{ vars.DESKTOP_SIGN_MAC }}
+          SIGN_WINDOWS: ${{ vars.DESKTOP_SIGN_WINDOWS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "$tag" ]]; then
+            echo "The Git tag must match package.json ($tag)." >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already exists. Bump the version before publishing again." >&2
+            exit 1
+          fi
+          test -f artifacts/latest.yml
+          test -f artifacts/latest-mac.yml
+          test -f "artifacts/OpenGlassUI-$version-mac-arm64.dmg"
+          test -f "artifacts/OpenGlassUI-$version-mac-x64.dmg"
+          test -f "artifacts/OpenGlassUI-$version-win-x64.exe"
+          {
+            printf 'Install the macOS DMG for Apple silicon (arm64) or Intel (x64), or the Windows x64 EXE.\n\n'
+            if [[ "$SIGN_MAC" != 1 ]]; then printf '%s\n' '- macOS installers are ad hoc signed and unnotarized. Update through GitHub Releases.'; fi
+            if [[ "$SIGN_WINDOWS" != 1 ]]; then printf '%s\n' '- Windows installers are unsigned. Update through GitHub Releases.'; fi
+            printf '\nSee the [desktop installation guide](https://github.com/weisser-dev/openglassui/blob/%s/docs/DESKTOP.md).\n' "$GITHUB_SHA"
+          } > release-notes.md
+          (cd artifacts && sha256sum ./*.dmg ./*.exe ./*.zip > SHA256SUMS.txt)
+          gh release create "$tag" artifacts/* --target "$GITHUB_SHA" --title "OpenGlassUI $version" --notes-file release-notes.md

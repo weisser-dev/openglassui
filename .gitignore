@@ -9,3 +9,5 @@ demo/theme.js
 demo/setup-glasses.png
 
 demo/dashboard/
+
+/dist/

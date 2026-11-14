@@ -1,10 +1,11 @@
+import { resolveCodexExecutable } from './codex-executable.js';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { listSessions, getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 
 // Each read-only request owns its app-server connection. It does not attach to or alter running turns.
 async function codexRequest(method, params, command='codex') {
- const child=spawn(command,['app-server'],{stdio:['pipe','pipe','pipe']});
+ const child=spawn(resolveCodexExecutable(command),['app-server'],{stdio:['pipe','pipe','pipe']});
  let stderr=''; child.stderr.on('data',x=>{stderr=(stderr+x).slice(-2000)});
  const lines=createInterface({input:child.stdout});
  let id=0; const pending=new Map();
@@ -61,7 +62,7 @@ export function runClaude({prompt,workspace,sessionId,model,onModels=()=>{},onMe
 }
 
 export function runCodex({prompt,workspace,sessionId,command='codex',model,onSession,onTurn=()=>{},onModel=()=>{},onText,onUsage=()=>{},onEvent=()=>{},onDecision,onDone}) {
- const child=spawn(command,['app-server','--enable','default_mode_request_user_input'],{stdio:['pipe','pipe','pipe']});
+ const child=spawn(resolveCodexExecutable(command),['app-server','--enable','default_mode_request_user_input'],{stdio:['pipe','pipe','pipe']});
  const lines=createInterface({input:child.stdout});let seq=0,finished=false,threadId,turnId,stderr='';const pending=new Map();
  function finish(err){if(finished)return;finished=true;for(const p of pending.values())p.reject(err||new Error('Sitzung beendet.'));pending.clear();child.kill();onDone(err);}
  function send(value){if(!child.stdin.destroyed)child.stdin.write(JSON.stringify(value)+'\n');}
