@@ -3,6 +3,22 @@ import { getSessionPage } from './session-pages.js';
 import { sendToDesktop, supportsDesktopSession } from './desktop-sessions.js';
 
 const desktopSends = new Set();
+const claudeDesktopQueues = new Map();
+function enqueueClaudeDesktopSend(key, send) {
+  let queue = claudeDesktopQueues.get(key);
+  if (!queue) {
+    queue = { tail: Promise.resolve(), pending: 0 };
+    claudeDesktopQueues.set(key, queue);
+  }
+  if (queue.pending >= 32) throw Object.assign(new Error('The Claude Desktop message queue is full. Wait for queued messages to be sent.'), { status: 429 });
+  queue.pending++;
+  const result = queue.tail.then(send, send);
+  queue.tail = result.catch(() => {});
+  return result.finally(() => {
+    queue.pending--;
+    if (queue.pending === 0 && claudeDesktopQueues.get(key) === queue) claudeDesktopQueues.delete(key);
+  });
+}
 import http from 'node:http';
 import { readFile, realpath, mkdir, writeFile, rename, access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
@@ -304,9 +320,10 @@ const handler = async (req, res) => {
         }
         if(task.pendingDecision)return json(res,409,{error:'Resolve the pending decision before sending a Desktop message.'});
         const key=task.agentId+':'+task.sessionId;
-        if(desktopSends.has(key))return json(res,409,{error:'Another message is being sent to this Desktop chat.'});
-        desktopSends.add(key);
-        try{
+        const send=async()=>{
+          if(desktopSends.has(key))throw Object.assign(new Error('Another message is being sent to this Desktop chat.'),{status:409});
+          desktopSends.add(key);
+          try{
           const device=requestDevice(req);
           await sendToDesktop({
             task, prompt:input.prompt.trim(), mode:input.mode, workspace:projectById(task.projectId||'default').path, dataDir,
@@ -320,8 +337,11 @@ const handler = async (req, res) => {
             task.pairedSentWords=(task.pairedSentWords||0)+countSentWords(input.prompt);
             save();
           }
-          return json(res,200,{ok:true});
-        }finally{desktopSends.delete(key);}
+          return {ok:true};
+          }finally{desktopSends.delete(key);}
+        };
+        if(task.agentId==='claude')return json(res,200,await enqueueClaudeDesktopSend(key,send));
+        return json(res,200,await send());
       }
       const steerMatch=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]+)\/steer$/);
       if(steerMatch){const input=await body(req);const task=tasks.get(steerMatch[1]);if(!task)return json(res,404,{error:'Task not found.'});if(!publicTaskInput(input))return json(res,400,{error:'Enter a message of up to 8000 characters.'});if(task.status!=='running'||!task.canSteer||typeof task.process?.steer!=='function'||task.pendingDecision)return json(res,409,{error:'This task cannot accept live input right now.'});try{await task.process.steer(input.prompt.trim());}catch{return json(res,409,{error:'The active turn ended or could not accept the message.'});}startConversationTurn(task,input.prompt.trim());task.lastMessageAt=new Date().toISOString();task.trackedMessages=(task.trackedMessages||0)+1;if(!isLocal){task.pairedRequests=(task.pairedRequests||0)+1;task.pairedSentWords=(task.pairedSentWords||0)+countSentWords(input.prompt);}save();return json(res,200,{ok:true});}

@@ -2,6 +2,10 @@
 
 Notable changes to OpenGlassUI are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2026-11-15
+
+- Queue multiple messages sent to the same Claude Desktop chat in order. When Claude is busy, the Desktop helper uses Claude's native queued-message action where available.
+
 ## [0.1.3] - 2026-11-14
 
 - Add macOS DMG and Windows EXE builds with a menu bar or tray app, optional start at login, and an update check through GitHub Releases.
